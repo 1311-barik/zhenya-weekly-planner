@@ -1,0 +1,1041 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DAY_START_HOUR,
+  DAY_END_HOUR,
+  DAY_END_MIN,
+  HOUR_HEIGHT,
+  MIN_BLOCK_MINUTES,
+  WEEKDAYS_SHORT,
+  NORMS,
+  NORM_TYPES,
+  type ColorKey,
+  type NormType,
+} from "@/lib/config";
+import type { BlockDTO, TaskDTO, TemplateDTO, WeekBundle } from "@/lib/types";
+import {
+  addDays,
+  fromDateKey,
+  startOfWeek,
+  toDateKey,
+  formatWeekTitle,
+} from "@/lib/week";
+import {
+  api,
+  computeNorms,
+  formatDuration,
+  formatTime,
+  maxFreeGap,
+  minToY,
+  playSnap,
+  pxHeight,
+  snapMin,
+  yToMin,
+} from "@/lib/client";
+import EditBlockPopup, { type BlockDraft } from "./EditBlockPopup";
+import AwayPopup from "./AwayPopup";
+import WeekWizard from "./WeekWizard";
+
+// Цвет норм-кирпичика по типу.
+const NORM_COLOR: Record<NormType, ColorKey> = { atelier: "bordeaux", gym: "orange" };
+
+const HOURS = Array.from(
+  { length: DAY_END_HOUR - DAY_START_HOUR + 1 },
+  (_, i) => DAY_START_HOUR + i
+);
+const GRID_HEIGHT = HOURS.length * HOUR_HEIGHT;
+const DRAG_THRESHOLD = 5; // px до начала перетаскивания (чтобы клик не двигал блок)
+
+// ───────── Раскладка пересекающихся блоков (дорожки) ─────────
+type Layout = Record<string, { left: number; width: number }>;
+
+function layoutDay(blocks: BlockDTO[]): Layout {
+  const sorted = [...blocks].sort((a, b) => a.start - b.start || b.duration - a.duration);
+  const out: Layout = {};
+  let cluster: BlockDTO[] = [];
+  let clusterEnd = -1;
+
+  const flush = () => {
+    if (!cluster.length) return;
+    const laneEnds: number[] = [];
+    const lane: Record<string, number> = {};
+    for (const b of cluster) {
+      let placed = -1;
+      for (let i = 0; i < laneEnds.length; i++) {
+        if (laneEnds[i] <= b.start) {
+          placed = i;
+          break;
+        }
+      }
+      if (placed === -1) {
+        placed = laneEnds.length;
+        laneEnds.push(0);
+      }
+      laneEnds[placed] = b.start + b.duration;
+      lane[b.id] = placed;
+    }
+    const lanes = laneEnds.length;
+    for (const b of cluster) {
+      out[b.id] = { left: (lane[b.id] / lanes) * 100, width: (1 / lanes) * 100 };
+    }
+    cluster = [];
+    clusterEnd = -1;
+  };
+
+  for (const b of sorted) {
+    if (cluster.length && b.start >= clusterEnd) flush();
+    cluster.push(b);
+    clusterEnd = Math.max(clusterEnd, b.start + b.duration);
+  }
+  flush();
+  return out;
+}
+
+// ───────── Состояние перетаскивания ─────────
+type DragState =
+  | { mode: "move"; id: string; grabOffsetY: number; duration: number }
+  | { mode: "resize"; id: string; start: number }
+  | {
+      mode: "create";
+      source: "template" | "task";
+      title: string;
+      color: ColorKey;
+      kind: BlockDTO["kind"];
+      templateId: string | null;
+      duration: number;
+    };
+
+interface LivePreview {
+  dayIndex: number;
+  start: number;
+  duration: number;
+  mode: DragState["mode"];
+  id?: string;
+  title?: string;
+  color?: ColorKey;
+}
+
+export default function Planner({
+  initial,
+  today,
+}: {
+  initial: WeekBundle;
+  today: string;
+}) {
+  const [bundle, setBundle] = useState<WeekBundle>(initial);
+  const [weekStart, setWeekStart] = useState<string>(initial.weekStart);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState<
+    { mode: "create" | "edit"; draft: BlockDraft } | null
+  >(null);
+  const [awayOpen, setAwayOpen] = useState(false);
+  const [mobileDay, setMobileDay] = useState<number>(() => {
+    const idx = initial.days.indexOf(today);
+    return idx >= 0 ? idx : 0;
+  });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [preview, setPreview] = useState<LivePreview | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
+  const [infoToast, setInfoToast] = useState<string | null>(null);
+
+  const colRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const dragRef = useRef<DragState | null>(null);
+  const previewRef = useRef<LivePreview | null>(null);
+  const movedRef = useRef(false);
+  const dragOriginRef = useRef({ x: 0, y: 0 });
+  const suppressClick = useRef(false);
+
+  // ── загрузка недели при смене ──
+  useEffect(() => {
+    if (weekStart === bundle.weekStart) return;
+    let active = true;
+    setLoading(true);
+    api
+      .week(weekStart)
+      .then((b) => {
+        if (active) {
+          setBundle(b);
+          const idx = b.days.indexOf(today);
+          setMobileDay(idx >= 0 ? idx : 0);
+        }
+      })
+      .catch((e) => active && setError(e.message))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [weekStart, bundle.weekStart, today]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const b = await api.week(weekStart);
+      setBundle(b);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [weekStart]);
+
+  const norms = useMemo(() => computeNorms(bundle.blocks), [bundle.blocks]);
+
+  // Сколько обязательных кирпичиков ещё надо расставить (по факту наличия
+  // блока нужного типа и длительности, независимо от отметки «выполнено»).
+  const normTray = useMemo(
+    () =>
+      NORM_TYPES.map((type) => {
+        const cfg = NORMS[type];
+        const placed = bundle.blocks.filter(
+          (b) => b.kind === type && b.duration >= cfg.minDuration
+        ).length;
+        return { type, cfg, remaining: Math.max(cfg.required - placed, 0) };
+      }),
+    [bundle.blocks]
+  );
+  const trayRemaining = normTray.reduce((s, n) => s + n.remaining, 0);
+
+  const flashInfo = useCallback((msg: string) => {
+    setInfoToast(msg);
+    window.setTimeout(() => setInfoToast((cur) => (cur === msg ? null : cur)), 3200);
+  }, []);
+
+  const flashPlaced = useCallback((id: string) => {
+    setJustPlacedId(id);
+    window.setTimeout(() => setJustPlacedId((cur) => (cur === id ? null : cur)), 360);
+  }, []);
+
+  const dayOffSet = useMemo(() => new Set(bundle.dayOff), [bundle.dayOff]);
+  const blocksByDay = useMemo(() => {
+    const map: Record<string, BlockDTO[]> = {};
+    for (const d of bundle.days) map[d] = [];
+    for (const b of bundle.blocks) (map[b.date] ??= []).push(b);
+    return map;
+  }, [bundle.blocks, bundle.days]);
+
+  // ── навигация недель ──
+  const goWeek = (delta: number) => {
+    const next = addDays(startOfWeek(fromDateKey(weekStart)), delta * 7);
+    setWeekStart(toDateKey(next));
+  };
+  const goToday = () => setWeekStart(toDateKey(startOfWeek(fromDateKey(today))));
+
+  // ── поиск колонки под курсором ──
+  const findColumn = (clientX: number, clientY: number) => {
+    for (let i = 0; i < colRefs.current.length; i++) {
+      const el = colRefs.current[i];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) continue; // скрытая (моб.)
+      if (clientX >= r.left && clientX <= r.right) {
+        const relY = Math.min(Math.max(clientY - r.top, 0), GRID_HEIGHT);
+        return { index: i, relY };
+      }
+    }
+    return null;
+  };
+
+  // ── обработчики перетаскивания (общие) ──
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    // Порог: клик с микро-сдвигом не считается перетаскиванием.
+    if (!movedRef.current) {
+      const o = dragOriginRef.current;
+      if (Math.hypot(e.clientX - o.x, e.clientY - o.y) < DRAG_THRESHOLD) return;
+      movedRef.current = true;
+    }
+    const hit = findColumn(e.clientX, e.clientY);
+    if (!hit) return;
+
+    let start: number;
+    let duration: number;
+    if (drag.mode === "move") {
+      start = snapMin(yToMin(hit.relY - drag.grabOffsetY));
+      duration = drag.duration;
+    } else if (drag.mode === "resize") {
+      start = drag.start;
+      duration = Math.max(snapMin(yToMin(hit.relY) - start), MIN_BLOCK_MINUTES);
+    } else {
+      start = snapMin(yToMin(hit.relY));
+      duration = drag.duration;
+    }
+    start = Math.min(Math.max(start, DAY_START_HOUR * 60), DAY_END_MIN - MIN_BLOCK_MINUTES);
+    duration = Math.min(duration, DAY_END_MIN - start);
+
+    const next: LivePreview = {
+      dayIndex: hit.index,
+      start,
+      duration,
+      mode: drag.mode,
+      id: "id" in drag ? drag.id : undefined,
+      title: drag.mode === "create" ? drag.title : undefined,
+      color: drag.mode === "create" ? drag.color : undefined,
+    };
+    previewRef.current = next;
+    setPreview(next);
+  }, []);
+
+  const onPointerUp = useCallback(async () => {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    const drag = dragRef.current;
+    const prev = previewRef.current;
+    dragRef.current = null;
+    previewRef.current = null;
+    setPreview(null);
+    if (movedRef.current) suppressClick.current = true;
+
+    if (!drag || !prev || !movedRef.current) return;
+    const dayKey = bundle.days[prev.dayIndex];
+    if (!dayKey) return;
+
+    try {
+      if (drag.mode === "create") {
+        if (dayOffSet.has(dayKey)) {
+          setError("Это выходной день — новые блоки не добавляются");
+          return;
+        }
+        const created = await api.createBlock({
+          title: drag.title,
+          color: drag.color,
+          date: dayKey,
+          start: prev.start,
+          duration: prev.duration,
+          kind: drag.kind,
+          templateId: drag.templateId,
+        });
+        // отклик при установке: пружинка + звук
+        playSnap();
+        flashPlaced(created.id);
+        setBundle((b) => {
+          const blocks = [...b.blocks, created];
+          // подсказка о свободном месте — для обязательных кирпичиков
+          if (drag.kind) {
+            const dayBlocks = blocks.filter((x) => x.date === dayKey);
+            const gap = maxFreeGap(dayBlocks);
+            const dayName = WEEKDAYS_SHORT[prev.dayIndex];
+            const minNorm = Math.min(...NORM_TYPES.map((t) => NORMS[t].minDuration));
+            flashInfo(
+              gap >= minNorm
+                ? `${dayName}: тут ещё влезет блок 👍`
+                : `${dayName}: день почти заполнен ✓`
+            );
+          }
+          return { ...b, blocks };
+        });
+      } else if (drag.mode === "move") {
+        playSnap();
+        flashPlaced(drag.id);
+        setBundle((b) => ({
+          ...b,
+          blocks: b.blocks.map((x) =>
+            x.id === drag.id ? { ...x, date: dayKey, start: prev.start } : x
+          ),
+        }));
+        await api.updateBlock(drag.id, { date: dayKey, start: prev.start });
+      } else if (drag.mode === "resize") {
+        setBundle((b) => ({
+          ...b,
+          blocks: b.blocks.map((x) =>
+            x.id === drag.id ? { ...x, duration: prev.duration } : x
+          ),
+        }));
+        await api.updateBlock(drag.id, { duration: prev.duration });
+      }
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  }, [bundle.days, dayOffSet, onPointerMove, refresh]);
+
+  const startDrag = (state: DragState, e: React.PointerEvent) => {
+    dragRef.current = state;
+    movedRef.current = false;
+    dragOriginRef.current = { x: e.clientX, y: e.clientY };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  // ── drag существующего блока (тело) ──
+  const onBlockPointerDown = (e: React.PointerEvent, block: BlockDTO) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".task-toggle") || target.closest(".resize-handle")) return;
+    e.preventDefault();
+    const blockRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    startDrag({
+      mode: "move",
+      id: block.id,
+      grabOffsetY: e.clientY - blockRect.top,
+      duration: block.duration,
+    }, e);
+  };
+
+  const onResizePointerDown = (e: React.PointerEvent, block: BlockDTO) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startDrag({ mode: "resize", id: block.id, start: block.start }, e);
+  };
+
+  // ── drag обязательного кирпичика из лотка ──
+  const onNormPointerDown = (e: React.PointerEvent, type: NormType) => {
+    e.preventDefault();
+    const cfg = NORMS[type];
+    startDrag(
+      {
+        mode: "create",
+        source: "template",
+        title: `${cfg.emoji} ${cfg.label}`,
+        color: NORM_COLOR[type],
+        kind: type,
+        templateId: null,
+        duration: cfg.minDuration,
+      },
+      e
+    );
+  };
+
+  // ── drag из библиотеки / inbox ──
+  const onTemplatePointerDown = (e: React.PointerEvent, t: TemplateDTO) => {
+    e.preventDefault();
+    startDrag({
+      mode: "create",
+      source: "template",
+      title: t.name,
+      color: t.color,
+      kind: t.kind,
+      templateId: t.id,
+      duration: t.duration,
+    }, e);
+  };
+
+  const onTaskPointerDown = (e: React.PointerEvent, task: TaskDTO) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".inbox-del") || target.closest(".task-toggle")) return;
+    e.preventDefault();
+    startDrag({
+      mode: "create",
+      source: "task",
+      title: task.title,
+      color: "purple",
+      kind: null,
+      templateId: null,
+      duration: task.duration ?? 60,
+    }, e);
+  };
+
+  // ── тогл выполнения ──
+  const toggleDone = async (block: BlockDTO) => {
+    const done = !block.done;
+    setBundle((b) => ({
+      ...b,
+      blocks: b.blocks.map((x) => (x.id === block.id ? { ...x, done } : x)),
+    }));
+    try {
+      await api.updateBlock(block.id, { done });
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  };
+
+  // ── клик по пустому месту → создать блок ──
+  const onColumnClick = (e: React.MouseEvent, dayIndex: number) => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    const dayKey = bundle.days[dayIndex];
+    if (dayOffSet.has(dayKey)) {
+      setError("Это выходной день — новые блоки не добавляются");
+      return;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const start = Math.min(
+      snapMin(yToMin(e.clientY - rect.top)),
+      DAY_END_MIN - 60
+    );
+    setEditing({
+      mode: "create",
+      draft: { title: "", color: "rose", date: dayKey, start, duration: 60 },
+    });
+  };
+
+  // ── сохранение из попапа ──
+  const saveBlock = async (d: BlockDraft) => {
+    try {
+      if (d.id) {
+        const updated = await api.updateBlock(d.id, {
+          title: d.title,
+          color: d.color,
+          start: d.start,
+          duration: d.duration,
+        });
+        setBundle((b) => ({
+          ...b,
+          blocks: b.blocks.map((x) => (x.id === d.id ? updated : x)),
+        }));
+      } else {
+        const created = await api.createBlock({
+          title: d.title,
+          color: d.color,
+          date: d.date,
+          start: d.start,
+          duration: d.duration,
+        });
+        setBundle((b) => ({ ...b, blocks: [...b.blocks, created] }));
+      }
+      setEditing(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const deleteBlock = async (id: string) => {
+    setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => x.id !== id) }));
+    setEditing(null);
+    try {
+      await api.deleteBlock(id);
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  };
+
+  // ── задачи (inbox) ──
+  const addTask = async () => {
+    const title = prompt("Новая задача:");
+    if (!title?.trim()) return;
+    try {
+      const t = await api.createTask({ title: title.trim() });
+      setBundle((b) => ({ ...b, tasks: [...b.tasks, t] }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    setBundle((b) => ({ ...b, tasks: b.tasks.filter((x) => x.id !== id) }));
+    try {
+      await api.deleteTask(id);
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  };
+
+  // ── выходной ──
+  const toggleDayOff = async (dayKey: string) => {
+    const next = !dayOffSet.has(dayKey);
+    try {
+      await api.dayOff(dayKey, next);
+      setBundle((b) => ({
+        ...b,
+        dayOff: next ? [...b.dayOff, dayKey] : b.dayOff.filter((d) => d !== dayKey),
+      }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  // ── отъезд ──
+  const activeAway = bundle.away[0];
+  const startAway = async (s: string, en: string) => {
+    try {
+      await api.away(s, en);
+      setAwayOpen(false);
+      refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const returnFromAway = async () => {
+    if (!activeAway) return;
+    try {
+      await api.returnFromAway(activeAway.id);
+      refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  // ── колбэки мастера «Собрать неделю» ──
+  const wizardAddTask = async (title: string) => {
+    try {
+      const t = await api.createTask({ title });
+      setBundle((b) => ({ ...b, tasks: [...b.tasks, t] }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const wizardRemoveBlocks = async (ids: string[]) => {
+    setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => !ids.includes(x.id)) }));
+    try {
+      await Promise.all(ids.map((id) => api.deleteBlock(id)));
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  };
+
+  const wizardApplyDayOff = async (selected: string | null) => {
+    const current = bundle.dayOff.find((d) => bundle.days.includes(d)) ?? null;
+    try {
+      if (current && current !== selected) await api.dayOff(current, false);
+      if (selected) await api.dayOff(selected, true);
+      setBundle((b) => ({
+        ...b,
+        dayOff: [
+          ...b.dayOff.filter((d) => !b.days.includes(d)),
+          ...(selected ? [selected] : []),
+        ],
+      }));
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  };
+
+  const finishWizard = () => {
+    setWizardOpen(false);
+    setSidebarOpen(false);
+    // подсказка после мастера
+    window.setTimeout(() => {
+      if (trayRemaining > 0) {
+        flashInfo("Осталось расставить обязательные блоки — перетащи их из лотка 🧱");
+      } else {
+        flashInfo("Неделя собрана 🎉");
+      }
+    }, 250);
+  };
+
+  // ── рендер одного блока ──
+  const renderBlock = (block: BlockDTO, layout: Layout, dayIndex: number) => {
+    const live =
+      preview && preview.id === block.id && preview.mode !== "create" ? preview : null;
+    const start = live ? live.start : block.start;
+    const duration = live ? live.duration : block.duration;
+    const lay = layout[block.id] ?? { left: 0, width: 100 };
+    const dragging = Boolean(live);
+
+    return (
+      <div
+        key={block.id}
+        className={`task-block block-${block.color}${block.done ? " done-block" : ""}${
+          dragging ? " dragging" : ""
+        }${block.id === justPlacedId ? " snap-pop" : ""}`}
+        style={{
+          top: minToY(start),
+          height: Math.max(pxHeight(duration), 26),
+          left: dragging ? "3px" : `calc(${lay.left}% + 3px)`,
+          width: dragging ? "auto" : `calc(${lay.width}% - 6px)`,
+          right: dragging ? "3px" : "auto",
+        }}
+        onPointerDown={(e) => onBlockPointerDown(e, block)}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            return;
+          }
+          setEditing({
+            mode: "edit",
+            draft: {
+              id: block.id,
+              title: block.title,
+              color: block.color,
+              date: block.date,
+              start: block.start,
+              duration: block.duration,
+            },
+          });
+        }}
+      >
+        <div className="task-block-title">{block.title}</div>
+        <div className="task-block-time">
+          {formatTime(start)} · {formatDuration(duration)}
+        </div>
+        <div
+          className={`task-toggle${block.done ? " done" : ""}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleDone(block);
+          }}
+        />
+        <div className="resize-handle" onPointerDown={(e) => onResizePointerDown(e, block)} />
+      </div>
+    );
+  };
+
+  const weekStartDate = startOfWeek(fromDateKey(weekStart));
+
+  return (
+    <>
+      {/* HEADER */}
+      <header className="app-header">
+        <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+          <div className="app-logo">
+            sheyn&apos;s <span>plan</span>
+            <em>ner</em>
+          </div>
+          <div className="week-nav">
+            <button className="nav-btn" onClick={() => goWeek(-1)} aria-label="Прошлая неделя">
+              ‹
+            </button>
+            <span className="week-title" onClick={goToday} style={{ cursor: "pointer" }}>
+              {formatWeekTitle(weekStartDate)}
+            </span>
+            <button className="nav-btn" onClick={() => goWeek(1)} aria-label="Следующая неделя">
+              ›
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {norms.map((n) => (
+            <div key={n.type} className={`norm-chip ${n.complete ? "norm-done" : "norm-todo"}`}>
+              <div className={`dot ${n.complete ? "dot-green" : "dot-red"}`} />
+              {n.emoji} {n.label} {n.done}/{n.required}
+            </div>
+          ))}
+        </div>
+
+        <div className="header-actions">
+          {activeAway ? (
+            <button className="btn-ghost active" onClick={returnFromAway}>
+              🏠 Я вернулась
+            </button>
+          ) : (
+            <button className="btn-ghost" onClick={() => setAwayOpen(true)}>
+              ✈️ Я уезжаю
+            </button>
+          )}
+          <button className="btn-ghost" onClick={() => setWizardOpen(true)}>
+            ✨ Собрать неделю
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() =>
+              setEditing({
+                mode: "create",
+                draft: {
+                  title: "",
+                  color: "rose",
+                  date: bundle.days[mobileDay] ?? bundle.days[0],
+                  start: 9 * 60,
+                  duration: 60,
+                },
+              })
+            }
+          >
+            + Задача
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--terracotta)",
+            color: "white",
+            padding: "8px 16px",
+            borderRadius: 20,
+            fontSize: 13,
+            zIndex: 200,
+            cursor: "pointer",
+          }}
+          onClick={() => setError(null)}
+        >
+          {error} ✕
+        </div>
+      )}
+
+      {infoToast && <div className="info-toast">{infoToast}</div>}
+
+      {/* MAIN */}
+      <div className="main-layout">
+        {/* SIDEBAR */}
+        <aside className={`sidebar${sidebarOpen ? " open" : ""}`}>
+          <div className="sidebar-handle" onClick={() => setSidebarOpen((v) => !v)}>
+            {sidebarOpen ? "▼ Скрыть" : "▲ Задачи и блоки"}
+          </div>
+          <div>
+            <div className="sidebar-section-title">Библиотека блоков</div>
+            {bundle.templates.map((t) => (
+              <div
+                key={t.id}
+                className="block-item"
+                onPointerDown={(e) => onTemplatePointerDown(e, t)}
+                title="Перетащи в нужный день"
+              >
+                <div
+                  className="block-color-dot"
+                  style={{ background: colorDot(t.color) }}
+                />
+                <span style={{ fontSize: 13 }}>{t.name}</span>
+                <span className="block-duration">{formatDuration(t.duration)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div className="sidebar-section-title">Список задач</div>
+            {bundle.tasks.length === 0 && (
+              <p style={{ fontSize: 12, color: "var(--light-gray)", marginBottom: 8 }}>
+                Пусто. Добавь задачу — потом перетащишь в день.
+              </p>
+            )}
+            {bundle.tasks.map((task) => (
+              <div
+                key={task.id}
+                className="inbox-item"
+                onPointerDown={(e) => onTaskPointerDown(e, task)}
+                title="Перетащи в день"
+              >
+                <span style={{ fontSize: 14, marginTop: 1 }}>◦</span>
+                <span className="inbox-text">{task.title}</span>
+                <span className="inbox-del" onClick={() => deleteTask(task.id)}>
+                  ✕
+                </span>
+              </div>
+            ))}
+            <button className="add-task-btn" onClick={addTask}>
+              + Добавить задачу
+            </button>
+          </div>
+        </aside>
+
+        {/* CALENDAR */}
+        <div className="calendar-area">
+          {/* Лоток обязательных кирпичиков */}
+          {trayRemaining > 0 && (
+            <div className="norm-tray">
+              <div className="norm-tray-title">Обязательное на неделю</div>
+              <div className="norm-tray-hint">
+                Перетащи на свободные места — блок аккуратно встанет.
+              </div>
+              <div className="tray-bricks">
+                {normTray.flatMap((n) =>
+                  Array.from({ length: n.remaining }, (_, i) => (
+                    <div
+                      key={`${n.type}-${i}`}
+                      className={`tray-brick block-${NORM_COLOR[n.type]}`}
+                      onPointerDown={(e) => onNormPointerDown(e, n.type)}
+                      title={`${n.cfg.label}: минимум ${formatDuration(n.cfg.minDuration)}`}
+                    >
+                      {n.cfg.emoji} {n.cfg.label}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile day switcher */}
+          <div className="mobile-day-switch">
+            <button
+              className="nav-btn"
+              onClick={() => setMobileDay((d) => Math.max(0, d - 1))}
+            >
+              ‹
+            </button>
+            <span className="week-title">{mobileDayLabel(bundle.days[mobileDay])}</span>
+            <button
+              className="nav-btn"
+              onClick={() => setMobileDay((d) => Math.min(6, d + 1))}
+            >
+              ›
+            </button>
+          </div>
+
+          {/* Days header */}
+          <div className="days-header">
+            <div style={{ borderRight: "1px solid rgba(196,189,180,0.2)" }} />
+            {bundle.days.map((dayKey, i) => {
+              const off = dayOffSet.has(dayKey);
+              const d = fromDateKey(dayKey);
+              return (
+                <div
+                  key={dayKey}
+                  className={`day-header${off ? " holiday" : ""}${
+                    i !== mobileDay ? " mobile-hidden" : ""
+                  }`}
+                >
+                  <div className="day-name">{WEEKDAYS_SHORT[i]}</div>
+                  <div className={`day-number${dayKey === today ? " today" : ""}`}>
+                    {d.getUTCDate()}
+                  </div>
+                  {off && <div className="holiday-badge">выходной</div>}
+                  <button
+                    className={`dayoff-btn${off ? " active" : ""}`}
+                    title={off ? "Отменить выходной" : "Сделать выходным"}
+                    onClick={() => toggleDayOff(dayKey)}
+                  >
+                    {off ? "↺" : "☼"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Time grid */}
+          <div className="time-grid" style={{ height: GRID_HEIGHT }}>
+            <div className="time-col">
+              {HOURS.map((h) => (
+                <div key={h} className="time-slot">
+                  <span className="time-label">{String(h).padStart(2, "0")}:00</span>
+                </div>
+              ))}
+            </div>
+
+            {bundle.days.map((dayKey, dayIndex) => {
+              const dayBlocks = blocksByDay[dayKey] ?? [];
+              const layout = layoutDay(dayBlocks);
+              const off = dayOffSet.has(dayKey);
+              const showGhost =
+                preview && preview.mode === "create" && preview.dayIndex === dayIndex;
+              return (
+                <div
+                  key={dayKey}
+                  ref={(el) => {
+                    colRefs.current[dayIndex] = el;
+                  }}
+                  className={`day-col${off ? " holiday-col" : ""}${
+                    dayIndex !== mobileDay ? " mobile-hidden" : ""
+                  }`}
+                  onClick={(e) => onColumnClick(e, dayIndex)}
+                >
+                  {HOURS.map((h) => (
+                    <div key={h} className="hour-line" />
+                  ))}
+
+                  {off && (
+                    <div className="holiday-overlay">
+                      <span className="holiday-label">ВЫХОДНОЙ</span>
+                    </div>
+                  )}
+
+                  {dayBlocks.map((b) => renderBlock(b, layout, dayIndex))}
+
+                  {showGhost && preview && (
+                    <div
+                      className="drop-ghost"
+                      style={{ top: minToY(preview.start), height: pxHeight(preview.duration) }}
+                    >
+                      <div style={{ padding: "6px 8px", fontSize: 11.5, color: "var(--terracotta)" }}>
+                        {preview.title}
+                        <div style={{ fontSize: 10, opacity: 0.8 }}>
+                          {formatTime(preview.start)} · {formatDuration(preview.duration)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {dayKey === today && <NowLine />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {loading && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 12,
+            right: 12,
+            fontSize: 12,
+            color: "var(--mid-gray)",
+            zIndex: 200,
+          }}
+        >
+          Загрузка…
+        </div>
+      )}
+
+      {editing && (
+        <EditBlockPopup
+          mode={editing.mode}
+          draft={editing.draft}
+          onSave={saveBlock}
+          onDelete={editing.draft.id ? () => deleteBlock(editing.draft.id!) : undefined}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {awayOpen && (
+        <AwayPopup
+          defaultStart={today}
+          onConfirm={startAway}
+          onClose={() => setAwayOpen(false)}
+        />
+      )}
+
+      {wizardOpen && (
+        <WeekWizard
+          bundle={bundle}
+          onRemoveBlocks={wizardRemoveBlocks}
+          onAddTask={wizardAddTask}
+          onRemoveTask={deleteTask}
+          onApplyDayOff={wizardApplyDayOff}
+          onFinish={finishWizard}
+          onClose={() => setWizardOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Линия «сейчас» — позиция по локальному времени.
+function NowLine() {
+  const [top, setTop] = useState<number | null>(null);
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      const min = now.getHours() * 60 + now.getMinutes();
+      if (min < DAY_START_HOUR * 60 || min > DAY_END_MIN) {
+        setTop(null);
+      } else {
+        setTop(minToY(min));
+      }
+    };
+    update();
+    const id = setInterval(update, 60000);
+    return () => clearInterval(id);
+  }, []);
+  if (top === null) return null;
+  return <div className="now-line" style={{ top }} />;
+}
+
+function colorDot(color: ColorKey): string {
+  const map: Record<ColorKey, string> = {
+    blue: "#6E9EBF",
+    purple: "#8B7FA8",
+    green: "#7A9B7A",
+    bordeaux: "#C4897A",
+    orange: "#C4704A",
+    mint: "#7AAFA8",
+    rose: "#C4899A",
+    gold: "#C9A96E",
+  };
+  return map[color];
+}
+
+const MOBILE_MONTHS = [
+  "янв", "фев", "мар", "апр", "мая", "июн",
+  "июл", "авг", "сен", "окт", "ноя", "дек",
+];
+function mobileDayLabel(dayKey: string): string {
+  if (!dayKey) return "";
+  const d = fromDateKey(dayKey);
+  const wd = WEEKDAYS_SHORT[(d.getUTCDay() + 6) % 7];
+  return `${wd}, ${d.getUTCDate()} ${MOBILE_MONTHS[d.getUTCMonth()]}`;
+}

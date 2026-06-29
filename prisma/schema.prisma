@@ -1,0 +1,76 @@
+// Недельный планировщик — схема БД (SQLite, один пользователь)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+/// Библиотека стандартных блoков (преднастроены автором).
+/// Из них блоки ставятся в сетку перетаскиванием / кликом.
+model Template {
+  id          String  @id @default(cuid())
+  name        String // с эмодзи, напр. "🧵 Ателье"
+  color       String // ключ цвета: blue|purple|green|bordeaux|orange|mint|rose|gold
+  duration    Int // длительность по умолчанию, минуты
+  kind        String? // тип нормы: "atelier" | "gym" | null
+  recurDay    Int? // повтор: день недели 0=Пн..6=Вс, null = вручную
+  recurStart  Int? // повтор: время старта, минуты от полуночи (напр. 660 = 11:00)
+  order       Int     @default(0)
+  blocks      Block[]
+}
+
+/// Поставленный блок в сетке конкретного дня.
+model Block {
+  id         String    @id @default(cuid())
+  title      String
+  color      String
+  date       DateTime // календарная дата дня (00:00 локально)
+  start      Int // время старта, минуты от полуночи
+  duration   Int // длительность, минуты
+  done       Boolean   @default(false)
+  recurring  Boolean   @default(false) // постоянное (переходящее) событие
+  kind       String? // "atelier" | "gym" | null — для зачёта нормы
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId String?
+  createdAt  DateTime  @default(now())
+
+  @@index([date])
+}
+
+/// Inbox — задачи без привязки к дню.
+model Task {
+  id            String    @id @default(cuid())
+  title         String
+  duration      Int? // желательная длительность, минуты
+  preferredDate DateTime? // желательная дата или null = любой день
+  done          Boolean   @default(false)
+  order         Int       @default(0)
+  createdAt     DateTime  @default(now())
+}
+
+/// Состояние конкретного дня: выходной.
+model DayState {
+  id     String   @id @default(cuid())
+  date   DateTime @unique // дата дня (00:00)
+  dayOff Boolean  @default(false)
+}
+
+/// Маркер: для этой недели уже материализованы повторяющиеся блоки.
+/// Наличие записи = повторы расставлены, повторно не создавать.
+model WeekSeed {
+  id        String   @id @default(cuid())
+  weekStart DateTime @unique // понедельник недели (UTC-полночь)
+  createdAt DateTime @default(now())
+}
+
+/// Период отъезда (режим «Я уезжаю»).
+model AwayPeriod {
+  id        String   @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+}
