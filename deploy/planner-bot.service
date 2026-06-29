@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/var/www/planner
-Environment=TZ=Europe/Bratislava
+Environment=TZ=Europe/Paris
 ExecStart=/usr/bin/node --env-file=/var/www/planner/.env /var/www/planner/bot/bot.mjs
 Restart=on-failure
 RestartSec=5

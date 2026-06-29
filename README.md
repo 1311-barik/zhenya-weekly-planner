@@ -79,7 +79,7 @@ src/components/        Planner (главный), EditBlockPopup, AwayPopup
 4. Напиши боту `/start` — он пришлёт твой `chat_id`.
 5. Добавь `TELEGRAM_CHAT_ID=<id>` в `.env` и `systemctl restart planner-bot`.
 
-Часовой пояс расписаний — `TZ` в юните (по умолчанию `Europe/Bratislava`).
+Часовой пояс расписаний — `TZ` в юните (по умолчанию `Europe/Paris`, Ницца).
 
 ## Дальше (не реализовано)
 

@@ -4,7 +4,7 @@
 //
 // Запуск: node --env-file=.env bot/bot.mjs
 // Нужно в .env: TELEGRAM_BOT_TOKEN (обязательно), TELEGRAM_CHAT_ID (для рассылок).
-// Часовой пояс расписаний берётся из TZ (по умолчанию Europe/Bratislava).
+// Часовой пояс расписаний берётся из TZ (по умолчанию Europe/Paris — Ницца).
 
 import { PrismaClient } from "@prisma/client";
 
