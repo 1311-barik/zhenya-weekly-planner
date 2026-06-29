@@ -359,8 +359,8 @@ export default function Planner({
             const minNorm = Math.min(...NORM_TYPES.map((t) => NORMS[t].minDuration));
             flashInfo(
               gap >= minNorm
-                ? `${dayName}: тут ещё влезет блок 👍`
-                : `${dayName}: день почти заполнен ✓`
+                ? `${dayName}: тут ещё есть место — можно поставить ещё блок 👍`
+                : `${dayName}: день заполнен, сюда больше не влезет ✓`
             );
           }
           return { ...b, blocks };
