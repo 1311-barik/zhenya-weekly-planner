@@ -141,6 +141,7 @@ export default function Planner({
   const [wizardOpen, setWizardOpen] = useState(false);
   const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
   const [infoToast, setInfoToast] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -148,6 +149,7 @@ export default function Planner({
   const movedRef = useRef(false);
   const dragOriginRef = useRef({ x: 0, y: 0 });
   const suppressClick = useRef(false);
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
 
   // ── загрузка недели при смене ──
   useEffect(() => {
@@ -196,6 +198,13 @@ export default function Planner({
   );
   const trayRemaining = normTray.reduce((s, n) => s + n.remaining, 0);
 
+  // Празднование, когда расставлен последний обязательный кирпичик.
+  const prevTrayRef = useRef(trayRemaining);
+  useEffect(() => {
+    if (prevTrayRef.current > 0 && trayRemaining === 0) setCelebrate(true);
+    prevTrayRef.current = trayRemaining;
+  }, [trayRemaining]);
+
   const flashInfo = useCallback((msg: string) => {
     setInfoToast(msg);
     window.setTimeout(() => setInfoToast((cur) => (cur === msg ? null : cur)), 3200);
@@ -220,6 +229,35 @@ export default function Planner({
     setWeekStart(toDateKey(next));
   };
   const goToday = () => setWeekStart(toDateKey(startOfWeek(fromDateKey(today))));
+
+  // ── свайп по дням (мобильный) ──
+  const onAreaTouchStart = (e: React.TouchEvent) => {
+    if (dragRef.current || e.touches.length !== 1) {
+      swipeRef.current = null;
+      return;
+    }
+    const el = e.target as HTMLElement;
+    if (el.closest(".task-block") || el.closest(".norm-tray")) {
+      swipeRef.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    swipeRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const onAreaTouchEnd = (e: React.TouchEvent) => {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    if (!start || dragRef.current) return;
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      suppressClick.current = true;
+      setMobileDay((d) => Math.min(6, Math.max(0, d + (dx < 0 ? 1 : -1))));
+    }
+  };
 
   // ── поиск колонки под курсором ──
   const findColumn = (clientX: number, clientY: number) => {
@@ -813,7 +851,11 @@ export default function Planner({
         </aside>
 
         {/* CALENDAR */}
-        <div className="calendar-area">
+        <div
+          className="calendar-area"
+          onTouchStart={onAreaTouchStart}
+          onTouchEnd={onAreaTouchEnd}
+        >
           {/* Лоток обязательных кирпичиков */}
           {trayRemaining > 0 && (
             <div className="norm-tray">
@@ -989,6 +1031,31 @@ export default function Planner({
           onFinish={finishWizard}
           onClose={() => setWizardOpen(false)}
         />
+      )}
+
+      {celebrate && (
+        <div className="popup-overlay" onClick={() => setCelebrate(false)}>
+          <div
+            className="popup celebrate-popup"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="celebrate-emoji">🎉</div>
+            <div className="popup-title serif" style={{ marginBottom: 8 }}>
+              Неделя собрана!
+            </div>
+            <p style={{ fontSize: 13, color: "var(--mid-gray)", marginBottom: 20 }}>
+              Все обязательные блоки на месте. Можно выдохнуть — и пусть всё идёт
+              по плану 💛
+            </p>
+            <button
+              className="btn-primary"
+              style={{ width: "100%" }}
+              onClick={() => setCelebrate(false)}
+            >
+              Отлично
+            </button>
+          </div>
+        </div>
       )}
     </>
   );

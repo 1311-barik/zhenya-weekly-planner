@@ -1033,3 +1033,20 @@ body::before {
     width: auto;
   }
 }
+
+/* ───────── Празднование ───────── */
+.celebrate-popup {
+  width: 320px;
+  text-align: center;
+}
+.celebrate-emoji {
+  font-size: 56px;
+  line-height: 1;
+  margin-bottom: 10px;
+  animation: celebrate-bounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes celebrate-bounce {
+  0% { transform: scale(0.2) rotate(-12deg); opacity: 0; }
+  60% { transform: scale(1.18) rotate(6deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); }
+}
