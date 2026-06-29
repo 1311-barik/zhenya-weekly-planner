@@ -90,6 +90,7 @@ async function send(text, chatId = CHAT) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!r.ok) console.error("[bot] sendMessage", r.status, await r.text());
   } catch (e) {
@@ -103,7 +104,11 @@ async function pollLoop() {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
-      const r = await fetch(`${API}/getUpdates?timeout=30&offset=${offset}`);
+      // Таймаут чуть больше long-poll (30с), чтобы зависшее соединение
+      // не замораживало бота навсегда.
+      const r = await fetch(`${API}/getUpdates?timeout=30&offset=${offset}`, {
+        signal: AbortSignal.timeout(40000),
+      });
       const data = await r.json();
       if (!data.ok) {
         await sleep(3000);
