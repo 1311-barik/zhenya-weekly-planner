@@ -1034,6 +1034,91 @@ body::before {
   }
 }
 
+/* ───────── Статистика ───────── */
+.stats-popup {
+  width: 420px;
+}
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.stats-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stat-card {
+  background: var(--cream);
+  border: 1px solid rgba(196, 189, 180, 0.45);
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+}
+.stat-num {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 26px;
+  color: var(--charcoal);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--mid-gray);
+  letter-spacing: 0.03em;
+}
+.stats-sub {
+  font-size: 13px;
+  color: var(--mid-gray);
+  margin-bottom: 16px;
+}
+.stats-weeks {
+  margin-bottom: 18px;
+}
+.stats-week-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+.stats-week-label {
+  font-size: 11px;
+  color: var(--mid-gray);
+  width: 48px;
+  flex-shrink: 0;
+}
+.stats-bar-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(196, 189, 180, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.stats-bar {
+  height: 100%;
+  background: var(--terracotta-light);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.stats-week-num {
+  font-size: 11px;
+  color: var(--charcoal);
+  width: 78px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.stats-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.stats-actions a {
+  text-decoration: none;
+}
+
 /* ───────── Празднование ───────── */
 .celebrate-popup {
   width: 320px;

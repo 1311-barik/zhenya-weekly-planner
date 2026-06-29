@@ -166,4 +166,18 @@ export const api = {
     }),
   returnFromAway: (id: string) =>
     req<{ ok: boolean }>(`/api/away/${id}`, { method: "DELETE" }),
+  stats: (month?: string) =>
+    req<StatsDTO>(`/api/stats${month ? `?month=${month}` : ""}`),
 };
+
+export interface StatsDTO {
+  month: string;
+  label: string;
+  atelier: { done: number; required: number };
+  gym: { done: number; required: number };
+  daysOff: number;
+  totalBlocks: number;
+  doneBlocks: number;
+  plannedHours: number;
+  weeks: { weekStart: string; label: string; atelier: number; gym: number; total: number }[];
+}

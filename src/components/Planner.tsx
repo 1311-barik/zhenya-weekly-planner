@@ -36,6 +36,7 @@ import {
 import EditBlockPopup, { type BlockDraft } from "./EditBlockPopup";
 import AwayPopup from "./AwayPopup";
 import WeekWizard from "./WeekWizard";
+import StatsPanel from "./StatsPanel";
 
 // Цвет норм-кирпичика по типу.
 const NORM_COLOR: Record<NormType, ColorKey> = { atelier: "bordeaux", gym: "orange" };
@@ -142,6 +143,7 @@ export default function Planner({
   const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
   const [infoToast, setInfoToast] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -751,6 +753,9 @@ export default function Planner({
               ✈️ Я уезжаю
             </button>
           )}
+          <button className="btn-ghost" onClick={() => setStatsOpen(true)} title="Статистика">
+            📊
+          </button>
           <button className="btn-ghost" onClick={() => setWizardOpen(true)}>
             ✨ Собрать неделю
           </button>
@@ -1032,6 +1037,8 @@ export default function Planner({
           onClose={() => setWizardOpen(false)}
         />
       )}
+
+      {statsOpen && <StatsPanel onClose={() => setStatsOpen(false)} />}
 
       {celebrate && (
         <div className="popup-overlay" onClick={() => setCelebrate(false)}>
