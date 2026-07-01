@@ -144,10 +144,12 @@ export default function Planner({
   const [infoToast, setInfoToast] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [extrasHidden, setExtrasHidden] = useState(false);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
   const previewRef = useRef<LivePreview | null>(null);
+  const pointerUpRef = useRef<(() => void) | null>(null);
   const movedRef = useRef(false);
   const dragOriginRef = useRef({ x: 0, y: 0 });
   const suppressClick = useRef(false);
@@ -157,7 +159,6 @@ export default function Planner({
   useEffect(() => {
     if (weekStart === bundle.weekStart) return;
     let active = true;
-    setLoading(true);
     api
       .week(weekStart)
       .then((b) => {
@@ -203,7 +204,13 @@ export default function Planner({
   // Празднование, когда расставлен последний обязательный кирпичик.
   const prevTrayRef = useRef(trayRemaining);
   useEffect(() => {
-    if (prevTrayRef.current > 0 && trayRemaining === 0) setCelebrate(true);
+    if (prevTrayRef.current > 0 && trayRemaining === 0) {
+      window.setTimeout(() => setCelebrate(true), 0);
+    }
+    if (trayRemaining > 0) {
+      // снова не закрыт, пока минимум не добран
+      window.setTimeout(() => setExtrasHidden(false), 0);
+    }
     prevTrayRef.current = trayRemaining;
   }, [trayRemaining]);
 
@@ -228,9 +235,15 @@ export default function Planner({
   // ── навигация недель ──
   const goWeek = (delta: number) => {
     const next = addDays(startOfWeek(fromDateKey(weekStart)), delta * 7);
-    setWeekStart(toDateKey(next));
+    const nextKey = toDateKey(next);
+    if (nextKey !== bundle.weekStart) setLoading(true);
+    setWeekStart(nextKey);
   };
-  const goToday = () => setWeekStart(toDateKey(startOfWeek(fromDateKey(today))));
+  const goToday = () => {
+    const nextKey = toDateKey(startOfWeek(fromDateKey(today)));
+    if (nextKey !== bundle.weekStart) setLoading(true);
+    setWeekStart(nextKey);
+  };
 
   // ── свайп по дням (мобильный) ──
   const onAreaTouchStart = (e: React.TouchEvent) => {
@@ -319,7 +332,7 @@ export default function Planner({
 
   const onPointerUp = useCallback(async () => {
     window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
+    if (pointerUpRef.current) window.removeEventListener("pointerup", pointerUpRef.current);
     const drag = dragRef.current;
     const prev = previewRef.current;
     dragRef.current = null;
@@ -388,7 +401,11 @@ export default function Planner({
       setError((e as Error).message);
       refresh();
     }
-  }, [bundle.days, dayOffSet, onPointerMove, refresh]);
+  }, [bundle.days, dayOffSet, flashInfo, flashPlaced, onPointerMove, refresh]);
+
+  useEffect(() => {
+    pointerUpRef.current = onPointerUp;
+  }, [onPointerUp]);
 
   const startDrag = (state: DragState, e: React.PointerEvent) => {
     dragRef.current = state;
@@ -652,7 +669,7 @@ export default function Planner({
   };
 
   // ── рендер одного блока ──
-  const renderBlock = (block: BlockDTO, layout: Layout, dayIndex: number) => {
+  const renderBlock = (block: BlockDTO, layout: Layout) => {
     const live =
       preview && preview.id === block.id && preview.mode !== "create" ? preview : null;
     const start = live ? live.start : block.start;
@@ -885,6 +902,31 @@ export default function Planner({
             </div>
           )}
 
+          {/* Лоток «Хочешь ещё?» — необязательные блоки сверх нормы */}
+          {trayRemaining === 0 && !extrasHidden && (
+            <div className="norm-tray">
+              <div className="norm-tray-title">Хочешь ещё?</div>
+              <div className="norm-tray-hint">
+                Минимум закрыт. Если на неделе есть место — добавь ещё блок. По желанию.
+              </div>
+              <div className="tray-bricks">
+                {NORM_TYPES.map((t) => (
+                  <div
+                    key={t}
+                    className={`tray-brick block-${NORM_COLOR[t]}`}
+                    onPointerDown={(e) => onNormPointerDown(e, t)}
+                    title={`${NORMS[t].label}: минимум ${formatDuration(NORMS[t].minDuration)}`}
+                  >
+                    {NORMS[t].emoji} {NORMS[t].label}
+                  </div>
+                ))}
+              </div>
+              <button className="tray-hide-btn" onClick={() => setExtrasHidden(true)}>
+                Скрыть
+              </button>
+            </div>
+          )}
+
           {/* Mobile day switcher */}
           <div className="mobile-day-switch">
             <button
@@ -969,7 +1011,7 @@ export default function Planner({
                     </div>
                   )}
 
-                  {dayBlocks.map((b) => renderBlock(b, layout, dayIndex))}
+                  {dayBlocks.map((b) => renderBlock(b, layout))}
 
                   {showGhost && preview && (
                     <div

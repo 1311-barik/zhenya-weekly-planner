@@ -54,7 +54,7 @@ export const NORMS: Record<
   { label: string; emoji: string; required: number; minDuration: number }
 > = {
   atelier: { label: "Ателье", emoji: "🧵", required: 2, minDuration: 240 },
-  gym: { label: "Качалка", emoji: "🏋️", required: 2, minDuration: 180 },
+  gym: { label: "Спорт", emoji: "🏋️", required: 2, minDuration: 180 },
 };
 
 export const NORM_TYPES = Object.keys(NORMS) as NormType[];

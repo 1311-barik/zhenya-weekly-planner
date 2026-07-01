@@ -861,6 +861,22 @@ body::before {
   color: var(--sage);
   font-weight: 500;
 }
+.tray-hide-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 5px;
+  border: none;
+  background: transparent;
+  color: var(--mid-gray);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.tray-hide-btn:hover {
+  background: var(--parchment);
+  color: var(--charcoal);
+}
 
 /* Пружинка при установке блока */
 @keyframes snap-pop {

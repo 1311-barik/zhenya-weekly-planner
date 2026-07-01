@@ -21,7 +21,6 @@ export default function StatsPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
     api
       .stats(month)
       .then((d) => {
@@ -36,19 +35,25 @@ export default function StatsPanel({ onClose }: { onClose: () => void }) {
     };
   }, [month]);
 
+  const changeMonth = (next: string) => {
+    if (next === month) return;
+    setLoading(true);
+    setMonth(next);
+  };
+
   const maxWeekTotal = data ? Math.max(1, ...data.weeks.map((w) => w.total)) : 1;
 
   return (
     <div className="popup-overlay" onClick={onClose}>
       <div className="popup stats-popup" onClick={(e) => e.stopPropagation()}>
         <div className="stats-head">
-          <button className="nav-btn" onClick={() => data && setMonth(prevMonth(data.month))}>
+          <button className="nav-btn" onClick={() => data && changeMonth(prevMonth(data.month))}>
             ‹
           </button>
           <div className="popup-title serif" style={{ margin: 0 }}>
             {data ? data.label : "Статистика"}
           </div>
-          <button className="nav-btn" onClick={() => data && setMonth(nextMonth(data.month))}>
+          <button className="nav-btn" onClick={() => data && changeMonth(nextMonth(data.month))}>
             ›
           </button>
         </div>
@@ -68,7 +73,7 @@ export default function StatsPanel({ onClose }: { onClose: () => void }) {
               </div>
               <div className="stat-card">
                 <div className="stat-num">🏋️ {data.gym.done}</div>
-                <div className="stat-label">Качалка (по норме)</div>
+                <div className="stat-label">Спорт (по норме)</div>
               </div>
               <div className="stat-card">
                 <div className="stat-num">🌿 {data.daysOff}</div>

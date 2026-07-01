@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 // (src/lib/config.ts) и материализуются автоматически на каждую неделю.
 const TEMPLATES = [
   { name: "🧵 Ателье", color: "bordeaux", duration: 240, kind: "atelier", order: 0 },
-  { name: "🏋️ Качалка", color: "orange", duration: 180, kind: "gym", order: 1 },
+  { name: "🏋️ Спорт", color: "orange", duration: 180, kind: "gym", order: 1 },
   { name: "🧘 Йога", color: "mint", duration: 60, kind: null, order: 2 },
   { name: "🎓 Инна", color: "blue", duration: 30, kind: null, order: 3 },
   { name: "🎓 Роберт", color: "blue", duration: 60, kind: null, order: 4 },

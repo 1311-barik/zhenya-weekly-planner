@@ -22,7 +22,6 @@ const API = `https://api.telegram.org/bot${TOKEN}`;
 // ───────── Даты (UTC-полночь как календарный день) ─────────
 const pad = (n) => String(n).padStart(2, "0");
 const fmtTime = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
-const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 function utcMidnight(y, mo, d) {
   return new Date(Date.UTC(y, mo, d));
@@ -44,7 +43,7 @@ function todayDate() {
 
 const NORMS = {
   atelier: { label: "Ателье", emoji: "🧵", required: 2, min: 240 },
-  gym: { label: "Качалка", emoji: "🏋️", required: 2, min: 180 },
+  gym: { label: "Спорт", emoji: "🏋️", required: 2, min: 180 },
 };
 
 // ───────── Данные ─────────
@@ -56,6 +55,13 @@ async function weekBlocks(date) {
   return prisma.block.findMany({
     where: { date: { gte: ws, lt: addDays(ws, 7) } },
   });
+}
+async function weekHasDayOff(date) {
+  const ws = startOfWeek(date);
+  const c = await prisma.dayState.count({
+    where: { date: { gte: ws, lt: addDays(ws, 7) }, dayOff: true },
+  });
+  return c > 0;
 }
 function normState(blocks) {
   return Object.entries(NORMS).map(([type, cfg]) => {
@@ -101,7 +107,6 @@ async function send(text, chatId = CHAT) {
 // ───────── Long-polling команд ─────────
 async function pollLoop() {
   let offset = 0;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       // Таймаут чуть больше long-poll (30с), чтобы зависшее соединение
@@ -171,11 +176,22 @@ async function tick() {
       if (t) send(t);
     });
 
-  // Воскресенье 20:00 — анонс новой недели
+  // Воскресенье 20:00 — анонс новой недели (+ напоминание про выходной)
   if (dow === 6 && hh === 20 && mm === 0)
     once(`${dayKey}-newweek`, () =>
-      send("Новая неделя на пороге — загляни в планировщик и собери её ✨")
+      send(
+        "Новая неделя на пороге — загляни в планировщик и собери её ✨\nИ не забудь выбрать себе выходной 🌿"
+      )
     );
+
+  // Среда 12:00 — мягко предложить выходной, если он ещё не выбран
+  if (dow === 2 && hh === 12 && mm === 0)
+    once(`${dayKey}-dayoff`, async () => {
+      if (!(await weekHasDayOff(todayDate())))
+        send(
+          "На этой неделе ещё не выбран выходной 🌿 Выбери себе день отдыха — это важно 💛"
+        );
+    });
 
   // За 30 минут до блока — напоминание
   const target = hh * 60 + mm + 30;
@@ -196,7 +212,6 @@ function sleep(ms) {
 async function schedulerLoop() {
   // выравниваемся на начало минуты
   await sleep((60 - new Date().getSeconds()) * 1000);
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       await tick();
