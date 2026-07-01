@@ -37,6 +37,7 @@ import EditBlockPopup, { type BlockDraft } from "./EditBlockPopup";
 import AwayPopup from "./AwayPopup";
 import WeekWizard from "./WeekWizard";
 import StatsPanel from "./StatsPanel";
+import TemplateEditor from "./TemplateEditor";
 
 // Цвет норм-кирпичика по типу.
 const NORM_COLOR: Record<NormType, ColorKey> = { atelier: "bordeaux", gym: "orange" };
@@ -146,6 +147,7 @@ export default function Planner({
   const [infoToast, setInfoToast] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [extrasHidden, setExtrasHidden] = useState(false);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -873,7 +875,12 @@ export default function Planner({
             {sidebarOpen ? "▼ Скрыть" : "▲ Задачи и блоки"}
           </div>
           <div>
-            <div className="sidebar-section-title">Библиотека блоков</div>
+            <div className="sidebar-section-title">
+              Библиотека блоков
+              <button className="sidebar-edit-btn" onClick={() => setTemplatesOpen(true)}>
+                настроить
+              </button>
+            </div>
             {bundle.templates.map((t) => (
               <div
                 key={t.id}
@@ -1225,6 +1232,14 @@ export default function Planner({
       )}
 
       {statsOpen && <StatsPanel onClose={() => setStatsOpen(false)} />}
+
+      {templatesOpen && (
+        <TemplateEditor
+          templates={bundle.templates}
+          onChange={(list) => setBundle((b) => ({ ...b, templates: list }))}
+          onClose={() => setTemplatesOpen(false)}
+        />
+      )}
 
       {addSheetDay && (
         <div className="add-sheet-overlay" onClick={() => setAddSheetDay(null)}>

@@ -168,6 +168,18 @@ export const api = {
     req<{ ok: boolean }>(`/api/away/${id}`, { method: "DELETE" }),
   stats: (month?: string) =>
     req<StatsDTO>(`/api/stats${month ? `?month=${month}` : ""}`),
+  createTemplate: (data: Record<string, unknown>) =>
+    req<import("./types").TemplateDTO>("/api/templates", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateTemplate: (id: string, data: Record<string, unknown>) =>
+    req<import("./types").TemplateDTO>(`/api/templates/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteTemplate: (id: string) =>
+    req<{ ok: boolean }>(`/api/templates/${id}`, { method: "DELETE" }),
 };
 
 export interface StatsDTO {
