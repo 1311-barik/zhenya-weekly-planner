@@ -724,6 +724,44 @@ body::before {
   justify-content: space-between;
   align-items: center;
 }
+.app-notice-overlay {
+  align-items: flex-start;
+  padding: 88px 12px 16px;
+}
+.app-notice-popup {
+  width: min(410px, 100%);
+  padding: 24px;
+}
+.app-notice-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.app-notice-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--cream);
+  border: 1px solid rgba(196, 189, 180, 0.45);
+  border-radius: 10px;
+  color: var(--charcoal);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.app-notice-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--warm-white);
+  color: var(--terracotta);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(196, 189, 180, 0.45);
+}
 
 /* ───────── Mobile ───────── */
 .mobile-day-switch {
@@ -732,7 +770,76 @@ body::before {
 
 @media (max-width: 760px) {
   body {
-    overflow: auto;
+    overflow-x: hidden;
+  }
+  .app-header {
+    padding: 12px;
+    gap: 10px;
+  }
+  .app-header > div:first-child {
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px !important;
+  }
+  .app-logo {
+    font-size: 19px;
+  }
+  .week-nav {
+    gap: 6px;
+  }
+  .week-title {
+    min-width: 0;
+    font-size: 12px;
+  }
+  .norm-chip {
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+  .header-actions {
+    width: 100%;
+    gap: 6px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .header-actions > .btn-primary {
+    display: none !important;
+  }
+  .btn-ghost,
+  .btn-primary {
+    padding: 7px 12px;
+  }
+  .main-layout {
+    height: calc(100dvh - var(--mobile-header-height, 184px));
+  }
+  .app-notice-overlay {
+    align-items: flex-end;
+    padding: 12px;
+  }
+  .app-notice-popup {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 20px;
+    border-radius: 18px;
+  }
+  .app-notice-popup .popup-title {
+    margin-bottom: 14px;
+  }
+  .app-notice-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding: 9px 10px;
+  }
+  .app-notice-popup .popup-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .app-notice-popup .btn-ghost,
+  .app-notice-popup .btn-primary {
+    width: 100%;
+    text-align: center;
+  }
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .main-layout {
     grid-template-columns: 1fr;

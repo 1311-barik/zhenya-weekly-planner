@@ -118,6 +118,19 @@ interface LivePreview {
   color?: ColorKey;
 }
 
+interface AppNotice {
+  icon: string;
+  text: string;
+}
+
+function blockWord(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return "блок";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "блока";
+  return "блоков";
+}
+
 export default function Planner({
   initial,
   today,
@@ -149,6 +162,9 @@ export default function Planner({
   const [statsOpen, setStatsOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [extrasHidden, setExtrasHidden] = useState(false);
+  const [appNoticeHidden, setAppNoticeHidden] = useState(false);
+  const [dayOffPromptHidden, setDayOffPromptHidden] = useState(false);
+  const [dayOffPromptChoice, setDayOffPromptChoice] = useState<string | null>(null);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -235,6 +251,50 @@ export default function Planner({
     for (const b of bundle.blocks) (map[b.date] ??= []).push(b);
     return map;
   }, [bundle.blocks, bundle.days]);
+  const currentWeekStart = useMemo(
+    () => toDateKey(startOfWeek(fromDateKey(today))),
+    [today]
+  );
+  const appNotices = useMemo<AppNotice[]>(() => {
+    if (bundle.weekStart !== currentWeekStart) return [];
+
+    const out: AppNotice[] = [];
+    const missingNorms = norms.filter((n) => !n.complete);
+    if (missingNorms.length > 0) {
+      out.push({
+        icon: "!",
+        text: `На этой неделе не закрыта норма: ${missingNorms
+          .map((n) => `${n.label} ${n.done}/${n.required}`)
+          .join(", ")}`,
+      });
+    }
+
+    const todayBlocks = (blocksByDay[today] ?? []).length;
+    out.push({
+      icon: "•",
+      text:
+        todayBlocks > 0
+          ? `Сегодня ${todayBlocks} ${blockWord(todayBlocks)}`
+          : "Сегодня блоков нет",
+    });
+
+    return out;
+  }, [blocksByDay, bundle.weekStart, currentWeekStart, norms, today]);
+  const showAppNotice = !appNoticeHidden && appNotices.length > 0;
+  const hasWeekDayOff = bundle.dayOff.some((d) => bundle.days.includes(d));
+  const showDayOffPrompt =
+    bundle.weekStart === currentWeekStart &&
+    trayRemaining === 0 &&
+    !hasWeekDayOff &&
+    !dayOffPromptHidden &&
+    !showAppNotice &&
+    !celebrate &&
+    !editing &&
+    !awayOpen &&
+    !wizardOpen &&
+    !statsOpen &&
+    !templatesOpen &&
+    !addSheetDay;
 
   // ── навигация недель ──
   const goWeek = (delta: number) => {
@@ -701,6 +761,16 @@ export default function Planner({
       setError((e as Error).message);
       refresh();
     }
+  };
+
+  const applyPromptDayOff = async () => {
+    if (!dayOffPromptChoice) {
+      setDayOffPromptHidden(true);
+      return;
+    }
+    await wizardApplyDayOff(dayOffPromptChoice);
+    setDayOffPromptHidden(true);
+    setDayOffPromptChoice(null);
   };
 
   const finishWizard = () => {
@@ -1209,6 +1279,72 @@ export default function Planner({
         </div>
       )}
 
+      {showAppNotice && (
+        <div className="popup-overlay app-notice-overlay" onClick={() => setAppNoticeHidden(true)}>
+          <div className="popup app-notice-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="popup-title serif">План на сейчас</div>
+            <div className="app-notice-list">
+              {appNotices.map((notice) => (
+                <div key={notice.text} className="app-notice-row">
+                  <span className="app-notice-icon">{notice.icon}</span>
+                  <span>{notice.text}</span>
+                </div>
+              ))}
+            </div>
+            <div className="popup-actions" style={{ justifyContent: "flex-end" }}>
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setAppNoticeHidden(true);
+                  setWizardOpen(true);
+                }}
+              >
+                Собрать неделю
+              </button>
+              <button className="btn-primary" onClick={() => setAppNoticeHidden(true)}>
+                Понятно
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDayOffPrompt && (
+        <div
+          className="popup-overlay app-notice-overlay"
+          onClick={() => setDayOffPromptHidden(true)}
+        >
+          <div className="popup app-notice-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="popup-title serif">Теперь выбери выходной</div>
+            <p className="wizard-intro">
+              Обязательные блоки уже на месте. Осталось оставить в неделе честную паузу.
+            </p>
+            <div className="wizard-dayoff-grid" style={{ marginBottom: 16 }}>
+              {bundle.days.map((dayKey, i) => (
+                <div
+                  key={dayKey}
+                  className={`wizard-day${dayOffPromptChoice === dayKey ? " selected" : ""}`}
+                  onClick={() =>
+                    setDayOffPromptChoice(dayOffPromptChoice === dayKey ? null : dayKey)
+                  }
+                >
+                  <div className="wizard-day-name">{WEEKDAYS_SHORT[i]}</div>
+                  <div className="wizard-day-num">{fromDateKey(dayKey).getUTCDate()}</div>
+                </div>
+              ))}
+            </div>
+            <div className="popup-actions" style={{ justifyContent: "flex-end" }}>
+              <button className="btn-ghost" onClick={() => setDayOffPromptHidden(true)}>
+                Позже
+              </button>
+              <button className="btn-primary" onClick={applyPromptDayOff}>
+                {dayOffPromptChoice ? "Сделать выходным" : "Без выходного"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editing && (
         <EditBlockPopup
           mode={editing.mode}
@@ -1233,7 +1369,6 @@ export default function Planner({
           onRemoveBlocks={wizardRemoveBlocks}
           onAddTask={wizardAddTask}
           onRemoveTask={deleteTask}
-          onApplyDayOff={wizardApplyDayOff}
           onFinish={finishWizard}
           onClose={() => setWizardOpen(false)}
         />

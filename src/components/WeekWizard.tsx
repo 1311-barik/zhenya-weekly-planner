@@ -11,7 +11,6 @@ interface Props {
   onRemoveBlocks: (ids: string[]) => Promise<void>;
   onAddTask: (title: string) => Promise<void>;
   onRemoveTask: (id: string) => Promise<void>;
-  onApplyDayOff: (dayKey: string | null) => Promise<void>;
   onFinish: () => void;
   onClose: () => void;
 }
@@ -21,7 +20,6 @@ export default function WeekWizard({
   onRemoveBlocks,
   onAddTask,
   onRemoveTask,
-  onApplyDayOff,
   onFinish,
   onClose,
 }: Props) {
@@ -29,9 +27,6 @@ export default function WeekWizard({
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [taskInput, setTaskInput] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const existingDayOff = bundle.dayOff.find((d) => bundle.days.includes(d)) ?? null;
-  const [selectedDayOff, setSelectedDayOff] = useState<string | null>(existingDayOff);
 
   // Постоянные (переходящие) события — блоки с флагом recurring.
   const recurringBlocks = useMemo(
@@ -66,7 +61,7 @@ export default function WeekWizard({
       }
       setStep(2);
     } else if (step === 2) {
-      setStep(3);
+      onFinish();
     }
   }
 
@@ -79,24 +74,13 @@ export default function WeekWizard({
     setBusy(false);
   }
 
-  async function finish() {
-    if (busy) return;
-    setBusy(true);
-    // выходной: применяем, только если изменилось
-    if (selectedDayOff !== existingDayOff) {
-      await onApplyDayOff(selectedDayOff);
-    }
-    setBusy(false);
-    onFinish();
-  }
-
   return (
     <div className="popup-overlay" onClick={onClose}>
       <div className="popup wizard" onClick={(e) => e.stopPropagation()}>
         <div className="popup-title serif">Собрать неделю</div>
 
         <div className="wizard-steps">
-          {[1, 2, 3].map((s) => (
+          {[1, 2].map((s) => (
             <div
               key={s}
               className={`wizard-dot${s === step ? " active" : ""}${
@@ -109,7 +93,7 @@ export default function WeekWizard({
         {/* ШАГ 1 — постоянные события */}
         {step === 1 && (
           <>
-            <div className="wizard-step-label">Шаг 1 из 3 · Постоянные события</div>
+            <div className="wizard-step-label">Шаг 1 из 2 · Постоянные события</div>
             <p className="wizard-intro">
               Это переходящие из недели в неделю события, привязанные ко времени — я уже
               расставил их. Всё в силе на этой неделе? Сними то, чего не будет.
@@ -144,7 +128,7 @@ export default function WeekWizard({
         {/* ШАГ 2 — разовые дела */}
         {step === 2 && (
           <>
-            <div className="wizard-step-label">Шаг 2 из 3 · Разовые дела</div>
+            <div className="wizard-step-label">Шаг 2 из 2 · Разовые дела</div>
             <p className="wizard-intro">
               Что уже запланировано на эту неделю? Врачи, маникюр, встречи, поездки…
               Добавь в список — потом перетащишь в нужный день.
@@ -177,36 +161,6 @@ export default function WeekWizard({
           </>
         )}
 
-        {/* ШАГ 3 — выходной */}
-        {step === 3 && (
-          <>
-            <div className="wizard-step-label">Шаг 3 из 3 · Выходной</div>
-            <p className="wizard-intro">
-              Хотя бы один выходной на неделе — это важно 💛 Выбери день, и он останется
-              свободным. Или можно без выходного — но попробуй всё-таки оставить себе паузу.
-            </p>
-            <div className="wizard-dayoff-grid">
-              {bundle.days.map((dayKey, i) => (
-                <div
-                  key={dayKey}
-                  className={`wizard-day${selectedDayOff === dayKey ? " selected" : ""}`}
-                  onClick={() =>
-                    setSelectedDayOff(selectedDayOff === dayKey ? null : dayKey)
-                  }
-                >
-                  <div className="wizard-day-name">{WEEKDAYS_SHORT[i]}</div>
-                  <div className="wizard-day-num">{fromDateKey(dayKey).getUTCDate()}</div>
-                </div>
-              ))}
-            </div>
-            {selectedDayOff === null && (
-              <p className="wizard-row-sub" style={{ marginBottom: 12 }}>
-                Сейчас выбрано: без выходного на этой неделе.
-              </p>
-            )}
-          </>
-        )}
-
         {/* НАВИГАЦИЯ */}
         <div className="wizard-actions">
           {step > 1 ? (
@@ -218,15 +172,9 @@ export default function WeekWizard({
               Отмена
             </button>
           )}
-          {step < 3 ? (
-            <button className="btn-primary" onClick={next} disabled={busy}>
-              Дальше
-            </button>
-          ) : (
-            <button className="btn-primary" onClick={finish} disabled={busy}>
-              Готово → расставить блоки
-            </button>
-          )}
+          <button className="btn-primary" onClick={next} disabled={busy}>
+            {step === 1 ? "Дальше" : "Готово → расставить блоки"}
+          </button>
         </div>
       </div>
     </div>
