@@ -1183,7 +1183,7 @@ export default function Planner({
                 <div
                   key={dayKey}
                   className={`day-header${off ? " holiday" : ""}${
-                    i !== mobileDay ? " mobile-hidden" : ""
+                    mobileView === "day" && i !== mobileDay ? " mobile-hidden" : ""
                   }`}
                 >
                   <div className="day-name">{WEEKDAYS_SHORT[i]}</div>
@@ -1226,7 +1226,7 @@ export default function Planner({
                     colRefs.current[dayIndex] = el;
                   }}
                   className={`day-col${off ? " holiday-col" : ""}${
-                    dayIndex !== mobileDay ? " mobile-hidden" : ""
+                    mobileView === "day" && dayIndex !== mobileDay ? " mobile-hidden" : ""
                   }`}
                   onClick={(e) => onColumnClick(e, dayIndex)}
                 >

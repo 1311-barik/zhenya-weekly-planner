@@ -876,14 +876,82 @@ body::before {
     height: calc(100vh - 64px - 46px);
     overflow: auto;
   }
-  /* show one day at a time */
-  .days-header,
-  .time-grid {
-    grid-template-columns: 44px 1fr;
-  }
   .day-col.mobile-hidden,
   .day-header.mobile-hidden {
     display: none;
+  }
+  .mv-week .calendar-area {
+    height: calc(100dvh - 166px);
+  }
+  .mv-week .days-header,
+  .mv-week .time-grid {
+    min-width: 100%;
+    grid-template-columns: 34px repeat(7, minmax(0, 1fr));
+  }
+  .mv-week .days-header {
+    top: 0;
+  }
+  .mv-week .day-header {
+    min-width: 0;
+    padding: 7px 1px 6px;
+  }
+  .mv-week .day-name {
+    font-size: 8px;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+  .mv-week .day-number {
+    font-size: 17px;
+  }
+  .mv-week .holiday-badge {
+    font-size: 7px;
+    letter-spacing: 0;
+    padding: 0 1px;
+  }
+  .mv-week .dayoff-btn {
+    top: 2px;
+    right: 1px;
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+    opacity: 1;
+  }
+  .mv-week .time-slot,
+  .mv-week .hour-line {
+    height: 42px;
+  }
+  .mv-week .time-slot {
+    padding-right: 3px;
+  }
+  .mv-week .time-label {
+    font-size: 8px;
+    letter-spacing: 0;
+  }
+  .mv-week .task-block {
+    left: 1px;
+    right: 1px;
+    border-radius: 5px;
+    padding: 3px 2px;
+    font-size: 8px;
+    line-height: 1.15;
+  }
+  .mv-week .task-block-title {
+    padding-right: 0;
+  }
+  .mv-week .task-block-time {
+    font-size: 7px;
+    margin-top: 0;
+  }
+  .mv-week .task-toggle,
+  .mv-week .resize-handle {
+    display: none;
+  }
+  .mv-week .mobile-day-switch {
+    display: none;
+  }
+  .mv-day .days-header,
+  .mv-day .time-grid {
+    grid-template-columns: 44px 1fr;
   }
   .mobile-day-switch {
     display: flex;
@@ -1299,8 +1367,8 @@ body::before {
     color: #fff;
     border-color: var(--terracotta);
   }
-  /* в режиме недели прячем дневную сетку и наоборот */
-  .mv-week .calendar-area {
+  /* в режиме недели показываем сетку, в режиме дня — список/дневную сетку */
+  .mv-week .week-agenda {
     display: none;
   }
   .mv-day .week-agenda {
