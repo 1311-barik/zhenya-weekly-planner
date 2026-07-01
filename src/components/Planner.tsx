@@ -821,6 +821,14 @@ export default function Planner({
           <button className="btn-ghost" onClick={() => setStatsOpen(true)} title="Статистика">
             📊
           </button>
+          <a
+            className="btn-ghost"
+            href={`/api/screenshot?week=${weekStart}`}
+            title="Скачать неделю картинкой"
+            style={{ textDecoration: "none" }}
+          >
+            🖼
+          </a>
           <button className="btn-ghost" onClick={() => setWizardOpen(true)}>
             ✨ Собрать неделю
           </button>
