@@ -22,6 +22,10 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
         title: "✈️ Отъезд",
       },
     }),
+    // Снимаем выходные, проставленные отъездом.
+    prisma.dayState.deleteMany({
+      where: { date: { gte: period.startDate, lt: rangeEnd } },
+    }),
     prisma.awayPeriod.delete({ where: { id } }),
   ]);
 

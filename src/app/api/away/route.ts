@@ -38,16 +38,23 @@ export async function POST(req: NextRequest) {
       ws = addDays(ws, 7);
     }
 
-    // Ставим блок ✈️ Отъезд на каждый день диапазона.
+    // На каждый день диапазона: блок ✈️ Отъезд + пометка «выходной»
+    // (отъезд = отдых, дни обязательно выходные).
     for (let d = new Date(start); d < rangeEnd; d = addDays(d, 1)) {
+      const day = new Date(d);
       await tx.block.create({
         data: {
           title: "✈️ Отъезд",
           color: "blue",
-          date: new Date(d),
+          date: day,
           start: DAY_START_MIN,
           duration: DAY_END_MIN - DAY_START_MIN,
         },
+      });
+      await tx.dayState.upsert({
+        where: { date: day },
+        create: { date: day, dayOff: true },
+        update: { dayOff: true },
       });
     }
 
