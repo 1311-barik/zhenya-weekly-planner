@@ -881,12 +881,22 @@ body::before {
     display: none;
   }
   .mv-week .calendar-area {
-    height: calc(100dvh - 166px);
+    height: calc(100dvh - 208px);
   }
-  .mv-week .days-header,
-  .mv-week .time-grid {
+  .mv-week-grid .days-header,
+  .mv-week-grid .time-grid {
     min-width: 100%;
     grid-template-columns: 34px repeat(7, minmax(0, 1fr));
+  }
+  .mv-week-scroll .calendar-area {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mv-week-scroll .days-header,
+  .mv-week-scroll .time-grid {
+    width: max(820px, 100%);
+    min-width: 820px;
+    grid-template-columns: 46px repeat(7, minmax(110px, 1fr));
   }
   .mv-week .days-header {
     top: 0;
@@ -920,12 +930,22 @@ body::before {
   .mv-week .hour-line {
     height: 42px;
   }
+  .mv-week-scroll .time-slot,
+  .mv-week-scroll .hour-line {
+    height: 54px;
+  }
   .mv-week .time-slot {
     padding-right: 3px;
+  }
+  .mv-week-scroll .time-slot {
+    padding-right: 8px;
   }
   .mv-week .time-label {
     font-size: 8px;
     letter-spacing: 0;
+  }
+  .mv-week-scroll .time-label {
+    font-size: 10px;
   }
   .mv-week .task-block {
     left: 1px;
@@ -942,9 +962,31 @@ body::before {
     font-size: 7px;
     margin-top: 0;
   }
+  .mv-week-scroll .task-block {
+    left: 3px;
+    right: 3px;
+    border-radius: 7px;
+    padding: 5px 6px;
+    font-size: 11px;
+    line-height: 1.25;
+  }
+  .mv-week-scroll .task-block-title {
+    padding-right: 16px;
+  }
+  .mv-week-scroll .task-block-time {
+    font-size: 9px;
+    margin-top: 1px;
+  }
   .mv-week .task-toggle,
   .mv-week .resize-handle {
     display: none;
+  }
+  .mv-week-scroll .task-toggle {
+    display: block;
+    top: 5px;
+    right: 5px;
+    width: 12px;
+    height: 12px;
   }
   .mv-week .mobile-day-switch {
     display: none;
@@ -1334,6 +1376,9 @@ body::before {
 .mobile-view-toggle {
   display: none;
 }
+.mobile-week-mode-toggle {
+  display: none;
+}
 
 @media (max-width: 760px) {
   .week-agenda {
@@ -1366,6 +1411,32 @@ body::before {
     background: var(--terracotta);
     color: #fff;
     border-color: var(--terracotta);
+  }
+  .mobile-week-mode-toggle {
+    display: none;
+    gap: 6px;
+    padding: 0 12px 8px;
+    background: var(--warm-white);
+    border-bottom: 1px solid rgba(196, 189, 180, 0.3);
+  }
+  .mv-week .mobile-week-mode-toggle {
+    display: flex;
+  }
+  .mobile-week-mode-toggle button {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid rgba(196, 189, 180, 0.65);
+    background: var(--cream);
+    color: var(--mid-gray);
+    border-radius: 9px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .mobile-week-mode-toggle button.active {
+    background: var(--charcoal);
+    color: #fff;
+    border-color: var(--charcoal);
   }
   /* в режиме недели показываем сетку, в режиме дня — список/дневную сетку */
   .mv-week .week-agenda {

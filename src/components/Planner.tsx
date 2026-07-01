@@ -153,6 +153,7 @@ export default function Planner({
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileView, setMobileView] = useState<"week" | "day">("week");
+  const [mobileWeekMode, setMobileWeekMode] = useState<"grid" | "scroll">("grid");
   const [addSheetDay, setAddSheetDay] = useState<string | null>(null);
   const [preview, setPreview] = useState<LivePreview | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -946,7 +947,13 @@ export default function Planner({
       {infoToast && <div className="info-toast">{infoToast}</div>}
 
       {/* MAIN */}
-      <div className={`main-layout ${mobileView === "week" ? "mv-week" : "mv-day"}`}>
+      <div
+        className={`main-layout ${
+          mobileView === "week"
+            ? `mv-week ${mobileWeekMode === "scroll" ? "mv-week-scroll" : "mv-week-grid"}`
+            : "mv-day"
+        }`}
+      >
         {/* SIDEBAR */}
         <aside className={`sidebar${sidebarOpen ? " open" : ""}`}>
           <div className="sidebar-handle" onClick={() => setSidebarOpen((v) => !v)}>
@@ -1016,6 +1023,21 @@ export default function Planner({
             onClick={() => setMobileView("day")}
           >
             День
+          </button>
+        </div>
+
+        <div className="mobile-week-mode-toggle" aria-label="Вид недели">
+          <button
+            className={mobileWeekMode === "grid" ? "active" : ""}
+            onClick={() => setMobileWeekMode("grid")}
+          >
+            Сетка
+          </button>
+          <button
+            className={mobileWeekMode === "scroll" ? "active" : ""}
+            onClick={() => setMobileWeekMode("scroll")}
+          >
+            Скролл
           </button>
         </div>
 
