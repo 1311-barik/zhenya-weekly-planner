@@ -138,6 +138,8 @@ export default function Planner({
     return idx >= 0 ? idx : 0;
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileView, setMobileView] = useState<"week" | "day">("week");
+  const [addSheetDay, setAddSheetDay] = useState<string | null>(null);
   const [preview, setPreview] = useState<LivePreview | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
@@ -497,6 +499,50 @@ export default function Planner({
     }
   };
 
+  // ── добавление блока тапом (мобильная лента) ──
+  // Первый свободный слот в дне, начиная с 9:00.
+  const firstFreeStart = (dayKey: string, duration: number) => {
+    const dayBlocks = (blocksByDay[dayKey] ?? [])
+      .slice()
+      .sort((a, b) => a.start - b.start);
+    let start = 9 * 60;
+    for (const b of dayBlocks) {
+      if (start + duration <= b.start) break;
+      if (b.start + b.duration > start) start = b.start + b.duration;
+    }
+    return Math.min(start, DAY_END_MIN - duration);
+  };
+
+  const addStandardBlock = async (dayKey: string, t: TemplateDTO) => {
+    setAddSheetDay(null);
+    if (dayOffSet.has(dayKey)) {
+      setError("Это выходной день — новые блоки не добавляются");
+      return;
+    }
+    try {
+      const created = await api.createBlock({
+        title: t.name,
+        color: t.color,
+        date: dayKey,
+        start: firstFreeStart(dayKey, t.duration),
+        duration: t.duration,
+        kind: t.kind,
+        templateId: t.id,
+      });
+      setBundle((b) => ({ ...b, blocks: [...b.blocks, created] }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const addCustomToDay = (dayKey: string) => {
+    setAddSheetDay(null);
+    setEditing({
+      mode: "create",
+      draft: { title: "", color: "rose", date: dayKey, start: firstFreeStart(dayKey, 60), duration: 60 },
+    });
+  };
+
   // ── клик по пустому месту → создать блок ──
   const onColumnClick = (e: React.MouseEvent, dayIndex: number) => {
     if (suppressClick.current) {
@@ -820,7 +866,7 @@ export default function Planner({
       {infoToast && <div className="info-toast">{infoToast}</div>}
 
       {/* MAIN */}
-      <div className="main-layout">
+      <div className={`main-layout ${mobileView === "week" ? "mv-week" : "mv-day"}`}>
         {/* SIDEBAR */}
         <aside className={`sidebar${sidebarOpen ? " open" : ""}`}>
           <div className="sidebar-handle" onClick={() => setSidebarOpen((v) => !v)}>
@@ -871,6 +917,104 @@ export default function Planner({
             </button>
           </div>
         </aside>
+
+        {/* Переключатель Неделя / День (мобильный) */}
+        <div className="mobile-view-toggle">
+          <button
+            className={mobileView === "week" ? "active" : ""}
+            onClick={() => setMobileView("week")}
+          >
+            Неделя
+          </button>
+          <button
+            className={mobileView === "day" ? "active" : ""}
+            onClick={() => setMobileView("day")}
+          >
+            День
+          </button>
+        </div>
+
+        {/* НЕДЕЛЬНАЯ ЛЕНТА (мобильная главная) */}
+        <div className="week-agenda">
+          {bundle.days.map((dayKey, i) => {
+            const off = dayOffSet.has(dayKey);
+            const d = fromDateKey(dayKey);
+            const dayBlocks = (blocksByDay[dayKey] ?? [])
+              .slice()
+              .sort((a, b) => a.start - b.start);
+            return (
+              <div
+                key={dayKey}
+                className={`agenda-day${dayKey === today ? " is-today" : ""}${
+                  off ? " is-dayoff" : ""
+                }`}
+              >
+                <div className="agenda-day-head">
+                  <span className="agenda-day-name">{WEEKDAYS_SHORT[i]}</span>
+                  <span className="agenda-day-num">{d.getUTCDate()}</span>
+                  {off && <span className="agenda-dayoff-badge">выходной</span>}
+                  <button
+                    className={`agenda-dayoff-btn${off ? " active" : ""}`}
+                    onClick={() => toggleDayOff(dayKey)}
+                    title={off ? "Отменить выходной" : "Сделать выходным"}
+                  >
+                    {off ? "↺" : "☼"}
+                  </button>
+                </div>
+
+                <div className="agenda-blocks">
+                  {dayBlocks.length === 0 && (
+                    <div className="agenda-empty">
+                      {off ? "Выходной 🌿" : "Свободно"}
+                    </div>
+                  )}
+                  {dayBlocks.map((b) => (
+                    <div
+                      key={b.id}
+                      className={`agenda-block${b.done ? " done" : ""}`}
+                      onClick={() =>
+                        setEditing({
+                          mode: "edit",
+                          draft: {
+                            id: b.id,
+                            title: b.title,
+                            color: b.color,
+                            date: b.date,
+                            start: b.start,
+                            duration: b.duration,
+                          },
+                        })
+                      }
+                    >
+                      <div
+                        className="agenda-color"
+                        style={{ background: colorDot(b.color) }}
+                      />
+                      <span className="agenda-block-time">{formatTime(b.start)}</span>
+                      <div className="agenda-block-body">
+                        <div className="agenda-block-title">{b.title}</div>
+                        <div className="agenda-block-dur">{formatDuration(b.duration)}</div>
+                      </div>
+                      <button
+                        className={`agenda-block-toggle${b.done ? " done" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleDone(b);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {!off && (
+                  <button className="agenda-add" onClick={() => setAddSheetDay(dayKey)}>
+                    + блок
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {/* CALENDAR */}
         <div
@@ -1081,6 +1225,37 @@ export default function Planner({
       )}
 
       {statsOpen && <StatsPanel onClose={() => setStatsOpen(false)} />}
+
+      {addSheetDay && (
+        <div className="add-sheet-overlay" onClick={() => setAddSheetDay(null)}>
+          <div className="add-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="add-sheet-title serif">Добавить в день</div>
+            <div className="add-sheet-chips">
+              {bundle.templates.map((t) => (
+                <button
+                  key={t.id}
+                  className="add-sheet-chip"
+                  onClick={() => addStandardBlock(addSheetDay, t)}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn-ghost"
+                style={{ flex: 1 }}
+                onClick={() => addCustomToDay(addSheetDay)}
+              >
+                ✏️ Своя задача
+              </button>
+              <button className="btn-ghost" onClick={() => setAddSheetDay(null)}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {celebrate && (
         <div className="popup-overlay" onClick={() => setCelebrate(false)}>
