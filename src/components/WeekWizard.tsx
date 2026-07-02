@@ -77,7 +77,7 @@ export default function WeekWizard({
   return (
     <div className="popup-overlay" onClick={onClose}>
       <div className="popup wizard" onClick={(e) => e.stopPropagation()}>
-        <div className="popup-title serif">Собрать неделю</div>
+        <div className="popup-title serif">Женя, соберём неделю</div>
 
         <div className="wizard-steps">
           {[1, 2].map((s) => (
@@ -95,12 +95,12 @@ export default function WeekWizard({
           <>
             <div className="wizard-step-label">Шаг 1 из 2 · Постоянные события</div>
             <p className="wizard-intro">
-              Это переходящие из недели в неделю события, привязанные ко времени — я уже
-              расставил их. Всё в силе на этой неделе? Сними то, чего не будет.
+              Я бережно перенёс постоянные события на неделю. Пожалуйста, оставь то,
+              что в силе, а лишнее можно мягко убрать.
             </p>
             <div className="wizard-body">
               {recurringBlocks.length === 0 && (
-                <p className="wizard-row-sub">Постоянных событий на этой неделе нет.</p>
+                <p className="wizard-row-sub">На этой неделе постоянных событий нет — спокойно.</p>
               )}
               {recurringBlocks.map((b) => {
                 const off = removed.has(b.id);
@@ -116,7 +116,7 @@ export default function WeekWizard({
                       className={`wizard-row-btn${off ? " restore" : ""}`}
                       onClick={() => toggleRemoved(b.id)}
                     >
-                      {off ? "Вернуть" : "Не будет"}
+                      {off ? "Вернуть" : "Убрать"}
                     </button>
                   </div>
                 );
@@ -130,8 +130,8 @@ export default function WeekWizard({
           <>
             <div className="wizard-step-label">Шаг 2 из 2 · Разовые дела</div>
             <p className="wizard-intro">
-              Что уже запланировано на эту неделю? Врачи, маникюр, встречи, поездки…
-              Добавь в список — потом перетащишь в нужный день.
+              Женя, что уже известно про эту неделю? Врач, маникюр, встречи, поездки…
+              Можно добавить сюда, а потом мягко перенести в нужный день.
             </p>
             <div className="wizard-add-row">
               <input
@@ -147,7 +147,7 @@ export default function WeekWizard({
             </div>
             <div className="wizard-body">
               {bundle.tasks.length === 0 && (
-                <p className="wizard-row-sub">Пока пусто — можно пропустить.</p>
+                <p className="wizard-row-sub">Пока здесь пусто — можно спокойно пропустить.</p>
               )}
               {bundle.tasks.map((t) => (
                 <div key={t.id} className="wizard-row">
@@ -173,7 +173,7 @@ export default function WeekWizard({
             </button>
           )}
           <button className="btn-primary" onClick={next} disabled={busy}>
-            {step === 1 ? "Дальше" : "Готово → расставить блоки"}
+            {step === 1 ? "Дальше" : "Готово → расставить мягко"}
           </button>
         </div>
       </div>

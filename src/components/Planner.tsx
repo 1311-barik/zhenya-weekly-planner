@@ -276,7 +276,7 @@ export default function Planner({
     if (missingNorms.length > 0) {
       out.push({
         icon: "•",
-        text: `На этой неделе ещё осталось место для нормы: ${missingNorms
+        text: `Женя, на этой неделе ещё есть место для любимых блоков: ${missingNorms
           .map((n) => `${n.label} ${n.done}/${n.required}`)
           .join(", ")}`,
       });
@@ -288,7 +288,7 @@ export default function Planner({
       text:
         todayBlocks > 0
           ? `Сегодня ${todayBlocks} ${blockWord(todayBlocks)}`
-          : "Сегодня блоков нет",
+          : "Женя, сегодня день без блоков",
     });
 
     return out;
@@ -542,7 +542,7 @@ export default function Planner({
     try {
       if (drag.mode === "create") {
         if (dayOffSet.has(dayKey)) {
-          setError("Это выходной день — новые блоки не добавляются");
+          setError("Женя, это выходной — давай оставим его свободным");
           return;
         }
         const created = await api.createBlock({
@@ -567,8 +567,8 @@ export default function Planner({
             const minNorm = Math.min(...NORM_TYPES.map((t) => NORMS[t].minDuration));
             flashInfo(
               gap >= minNorm
-                ? `${dayName}: тут ещё есть место — можно поставить ещё блок 👍`
-                : `${dayName}: день заполнен, сюда больше не влезет ✓`
+                ? `${dayName}: тут ещё есть мягкое окошко, если захочется добавить блок`
+                : `${dayName}: кажется, этот день уже достаточно полный`
             );
           }
           return { ...b, blocks };
@@ -697,7 +697,7 @@ export default function Planner({
   const addStandardBlock = async (dayKey: string, t: TemplateDTO) => {
     setAddSheetDay(null);
     if (dayOffSet.has(dayKey)) {
-      setError("Это выходной день — новые блоки не добавляются");
+      setError("Женя, это выходной — давай оставим его свободным");
       return;
     }
     try {
@@ -732,7 +732,7 @@ export default function Planner({
     }
     const dayKey = bundle.days[dayIndex];
     if (dayOffSet.has(dayKey)) {
-      setError("Это выходной день — новые блоки не добавляются");
+      setError("Женя, это выходной — давай оставим его свободным");
       return;
     }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -898,9 +898,9 @@ export default function Planner({
     // подсказка после мастера
     window.setTimeout(() => {
       if (trayRemaining > 0) {
-        flashInfo("Осталось расставить обязательные блоки — перетащи их из лотка 🧱");
+        flashInfo("Женя, пожалуйста, расставь любимые блоки в подходящие окошки");
       } else {
-        flashInfo("Неделя собрана 🎉");
+        flashInfo("Женя, неделя уже выглядит собранной");
       }
     }, 250);
   };
@@ -1087,7 +1087,7 @@ export default function Planner({
                 key={t.id}
                 className="block-item"
                 onPointerDown={(e) => onTemplatePointerDown(e, t)}
-                title="Перетащи в нужный день"
+                title="Можно мягко перенести в нужный день"
               >
                 <div
                   className="block-color-dot"
@@ -1103,7 +1103,7 @@ export default function Planner({
             <div className="sidebar-section-title">Список задач</div>
             {bundle.tasks.length === 0 && (
               <p style={{ fontSize: 12, color: "var(--light-gray)", marginBottom: 8 }}>
-                Пусто. Добавь задачу — потом перетащишь в день.
+                Пока здесь спокойно. Если появится дело, Женя, можно добавить его сюда.
               </p>
             )}
             {bundle.tasks.map((task) => (
@@ -1111,7 +1111,7 @@ export default function Planner({
                 key={task.id}
                 className="inbox-item"
                 onPointerDown={(e) => onTaskPointerDown(e, task)}
-                title="Перетащи в день"
+                title="Можно перенести в день"
               >
                 <span style={{ fontSize: 14, marginTop: 1 }}>◦</span>
                 <span className="inbox-text">{task.title}</span>
@@ -1166,7 +1166,9 @@ export default function Planner({
         <div className="mobile-list-tray">
           {trayRemaining > 0 ? (
             <>
-              <div className="mobile-list-tray-title">Перетащи в пустоту</div>
+              <div className="mobile-list-tray-title">
+                Женя, пожалуйста, перенеси в подходящее окошко
+              </div>
               <div className="mobile-list-bricks">
                 {normTray.flatMap((n) =>
                   Array.from({ length: n.remaining }, (_, idx) => (
@@ -1289,9 +1291,9 @@ export default function Planner({
                               {formatTime(gap.start)}–{formatTime(gap.end)}
                             </span>
                             <span className="agenda-gap-body">
-                              <span className="agenda-gap-title">Пустота</span>
+                              <span className="agenda-gap-title">Окошко</span>
                               <span className="agenda-gap-hint">
-                                Влезет{" "}
+                                Сюда мягко встанет{" "}
                                 {gap.fits
                                   .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
                                   .join(" или ")}
@@ -1320,9 +1322,9 @@ export default function Planner({
                           {formatTime(gap.start)}–{formatTime(gap.end)}
                         </span>
                         <span className="agenda-gap-body">
-                          <span className="agenda-gap-title">Пустота</span>
+                          <span className="agenda-gap-title">Окошко</span>
                           <span className="agenda-gap-hint">
-                            Влезет{" "}
+                            Сюда мягко встанет{" "}
                             {gap.fits
                               .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
                               .join(" или ")}
@@ -1351,9 +1353,9 @@ export default function Planner({
           {/* Лоток обязательных кирпичиков */}
           {trayRemaining > 0 && (
             <div className="norm-tray">
-              <div className="norm-tray-title">Обязательное на неделю</div>
+              <div className="norm-tray-title">Любимые блоки недели</div>
               <div className="norm-tray-hint">
-                Перетащи на свободные места — блок аккуратно встанет.
+                Женя, пожалуйста, перенеси их в подходящие окошки — блок аккуратно встанет.
               </div>
               <div className="tray-bricks">
                 {normTray.flatMap((n) =>
@@ -1375,9 +1377,9 @@ export default function Planner({
           {/* Лоток «Хочешь ещё?» — необязательные блоки сверх нормы */}
           {trayRemaining === 0 && !extrasHidden && (
             <div className="norm-tray">
-              <div className="norm-tray-title">Хочешь ещё?</div>
+              <div className="norm-tray-title">Если захочется ещё</div>
               <div className="norm-tray-hint">
-                Минимум закрыт. Если на неделе есть место — добавь ещё блок. По желанию.
+                Неделя уже собрана. Можно добавить ещё блок только если хочется.
               </div>
               <div className="tray-bricks">
                 {NORM_TYPES.map((t) => (
@@ -1523,7 +1525,7 @@ export default function Planner({
       {showAppNotice && (
         <div className="popup-overlay app-notice-overlay" onClick={() => setAppNoticeHidden(true)}>
           <div className="popup app-notice-popup" onClick={(e) => e.stopPropagation()}>
-            <div className="popup-title serif">План на сейчас</div>
+            <div className="popup-title serif">Женя, план на сейчас</div>
             <div className="app-notice-list">
               {appNotices.map((notice) => (
                 <div key={notice.text} className="app-notice-row">
@@ -1540,7 +1542,7 @@ export default function Planner({
                   setWizardOpen(true);
                 }}
               >
-                Собрать неделю
+                Собрать неделю, пожалуйста
               </button>
               <button className="btn-primary" onClick={() => setAppNoticeHidden(true)}>
                 Понятно
@@ -1556,9 +1558,9 @@ export default function Planner({
           onClick={() => setDayOffPromptHidden(true)}
         >
           <div className="popup app-notice-popup" onClick={(e) => e.stopPropagation()}>
-            <div className="popup-title serif">Теперь выбери выходной</div>
+            <div className="popup-title serif">Женя, давай выберем выходной</div>
             <p className="wizard-intro">
-              Обязательные блоки уже на месте. Осталось оставить в неделе честную паузу.
+              Любимые блоки уже на месте. Пожалуйста, оставим в неделе честную паузу.
             </p>
             <div className="wizard-dayoff-grid" style={{ marginBottom: 16 }}>
               {bundle.days.map((dayKey, i) => (
@@ -1664,18 +1666,18 @@ export default function Planner({
           >
             <div className="celebrate-emoji">🎉</div>
             <div className="popup-title serif" style={{ marginBottom: 8 }}>
-              Неделя собрана!
+              Женя, неделя собрана
             </div>
             <p style={{ fontSize: 13, color: "var(--mid-gray)", marginBottom: 20 }}>
-              Все обязательные блоки на месте. Можно выдохнуть — и пусть всё идёт
-              по плану 💛
+              Любимые блоки нашли свои места. Можно выдохнуть — и пусть всё идёт
+              мягко 💛
             </p>
             <button
               className="btn-primary"
               style={{ width: "100%" }}
               onClick={() => setCelebrate(false)}
             >
-              Отлично
+              Спасибо
             </button>
           </div>
         </div>

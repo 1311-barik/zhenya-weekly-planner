@@ -35,8 +35,8 @@ export default function AwayPopup({
   };
 
   function confirm() {
-    if (!start) return setError("Укажи дату отъезда");
-    if (days < 1) return setError("Минимум 1 день");
+    if (!start) return setError("Женя, пожалуйста, укажи дату отъезда");
+    if (days < 1) return setError("Пожалуйста, выбери хотя бы один день");
     onConfirm(start, endDate);
   }
 
@@ -45,8 +45,8 @@ export default function AwayPopup({
       <div className="popup" onClick={(e) => e.stopPropagation()}>
         <div className="popup-title serif">✈️ Я уезжаю</div>
         <p style={{ fontSize: 13, color: "var(--mid-gray)", marginBottom: 16 }}>
-          На эти дни встанет блок «Отъезд», они станут выходными, а остальные блоки
-          и повторяющиеся события на этих неделях уберутся.
+          Женя, на эти дни я поставлю «Отъезд» и оставлю их свободными.
+          Остальные блоки в эти дни аккуратно уберутся.
         </p>
 
         <label className="form-label">Дата отъезда</label>

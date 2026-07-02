@@ -83,7 +83,7 @@ export default function StatsPanel({ onClose }: { onClose: () => void }) {
                 <div className="stat-num">
                   ✓ {data.doneBlocks}/{data.totalBlocks}
                 </div>
-                <div className="stat-label">Выполнено блоков</div>
+                <div className="stat-label">Отмечено как сделанное</div>
               </div>
             </div>
 
