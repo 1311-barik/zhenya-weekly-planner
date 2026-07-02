@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DAY_START_HOUR,
+  DAY_START_MIN,
   DAY_END_HOUR,
   DAY_END_MIN,
   HOUR_HEIGHT,
@@ -123,6 +124,14 @@ interface AppNotice {
   text: string;
 }
 
+interface AgendaGap {
+  id: string;
+  start: number;
+  end: number;
+  fits: NormType[];
+  variant: "empty-day" | "between";
+}
+
 function blockWord(count: number) {
   const mod10 = count % 10;
   const mod100 = count % 100;
@@ -153,7 +162,7 @@ export default function Planner({
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileView, setMobileView] = useState<"week" | "day">("week");
-  const [mobileWeekMode, setMobileWeekMode] = useState<"grid" | "scroll">("grid");
+  const [mobileWeekMode, setMobileWeekMode] = useState<"grid" | "scroll" | "list">("list");
   const [addSheetDay, setAddSheetDay] = useState<string | null>(null);
   const [preview, setPreview] = useState<LivePreview | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -175,6 +184,7 @@ export default function Planner({
   const dragOriginRef = useRef({ x: 0, y: 0 });
   const suppressClick = useRef(false);
   const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  const lastSnapKeyRef = useRef("");
 
   // ── загрузка недели при смене ──
   useEffect(() => {
@@ -263,8 +273,8 @@ export default function Planner({
     const missingNorms = norms.filter((n) => !n.complete);
     if (missingNorms.length > 0) {
       out.push({
-        icon: "!",
-        text: `На этой неделе не закрыта норма: ${missingNorms
+        icon: "•",
+        text: `На этой неделе ещё осталось место для нормы: ${missingNorms
           .map((n) => `${n.label} ${n.done}/${n.required}`)
           .join(", ")}`,
       });
@@ -296,6 +306,67 @@ export default function Planner({
     !statsOpen &&
     !templatesOpen &&
     !addSheetDay;
+
+  const agendaGapsByDay = useMemo(() => {
+    const out: Record<string, AgendaGap[]> = {};
+    const focusEnd = Math.min(DAY_END_MIN, 20 * 60);
+
+    for (const dayKey of bundle.days) {
+      const blocks = (blocksByDay[dayKey] ?? [])
+        .slice()
+        .sort((a, b) => a.start - b.start);
+      const gaps: AgendaGap[] = [];
+
+      if (dayOffSet.has(dayKey)) {
+        out[dayKey] = gaps;
+        continue;
+      }
+
+      if (blocks.length === 0) {
+        gaps.push(
+          {
+            id: `${dayKey}-empty-1`,
+            start: Math.max(DAY_START_MIN, 10 * 60),
+            end: Math.min(focusEnd, 14 * 60),
+            fits: ["atelier", "gym"],
+            variant: "empty-day",
+          },
+          {
+            id: `${dayKey}-empty-2`,
+            start: Math.max(DAY_START_MIN, 15 * 60),
+            end: Math.min(focusEnd, 18 * 60),
+            fits: ["gym"],
+            variant: "empty-day",
+          }
+        );
+        out[dayKey] = gaps.filter((gap) => gap.end - gap.start >= NORMS.gym.minDuration);
+        continue;
+      }
+
+      for (let i = 0; i < blocks.length; i++) {
+        const current = blocks[i];
+        const next = blocks[i + 1];
+        const start = current.start + current.duration;
+        const end = Math.min(next ? next.start : focusEnd, focusEnd);
+        const duration = end - start;
+        const fits = NORM_TYPES.filter((type) => duration >= NORMS[type].minDuration);
+
+        if (fits.length > 0) {
+          gaps.push({
+            id: `${dayKey}-${start}-${end}`,
+            start,
+            end,
+            fits,
+            variant: "between",
+          });
+        }
+      }
+
+      out[dayKey] = gaps;
+    }
+
+    return out;
+  }, [blocksByDay, bundle.days, dayOffSet]);
 
   // ── навигация недель ──
   const goWeek = (delta: number) => {
@@ -391,6 +462,11 @@ export default function Planner({
       title: drag.mode === "create" ? drag.title : undefined,
       color: drag.mode === "create" ? drag.color : undefined,
     };
+    const snapKey = `${hit.index}:${start}:${duration}`;
+    if (snapKey !== lastSnapKeyRef.current) {
+      if (e.pointerType === "touch") window.navigator.vibrate?.(8);
+      lastSnapKeyRef.current = snapKey;
+    }
     previewRef.current = next;
     setPreview(next);
   }, []);
@@ -402,6 +478,7 @@ export default function Planner({
     const prev = previewRef.current;
     dragRef.current = null;
     previewRef.current = null;
+    lastSnapKeyRef.current = "";
     setPreview(null);
     if (movedRef.current) suppressClick.current = true;
 
@@ -474,6 +551,7 @@ export default function Planner({
 
   const startDrag = (state: DragState, e: React.PointerEvent) => {
     dragRef.current = state;
+    lastSnapKeyRef.current = "";
     movedRef.current = false;
     dragOriginRef.current = { x: e.clientX, y: e.clientY };
     window.addEventListener("pointermove", onPointerMove);
@@ -950,7 +1028,13 @@ export default function Planner({
       <div
         className={`main-layout ${
           mobileView === "week"
-            ? `mv-week ${mobileWeekMode === "scroll" ? "mv-week-scroll" : "mv-week-grid"}`
+            ? `mv-week ${
+                mobileWeekMode === "scroll"
+                  ? "mv-week-scroll"
+                  : mobileWeekMode === "list"
+                    ? "mv-week-list"
+                    : "mv-week-grid"
+              }`
             : "mv-day"
         }`}
       >
@@ -1028,6 +1112,12 @@ export default function Planner({
 
         <div className="mobile-week-mode-toggle" aria-label="Вид недели">
           <button
+            className={mobileWeekMode === "list" ? "active" : ""}
+            onClick={() => setMobileWeekMode("list")}
+          >
+            Список
+          </button>
+          <button
             className={mobileWeekMode === "grid" ? "active" : ""}
             onClick={() => setMobileWeekMode("grid")}
           >
@@ -1049,6 +1139,7 @@ export default function Planner({
             const dayBlocks = (blocksByDay[dayKey] ?? [])
               .slice()
               .sort((a, b) => a.start - b.start);
+            const dayGaps = agendaGapsByDay[dayKey] ?? [];
             return (
               <div
                 key={dayKey}
@@ -1070,47 +1161,92 @@ export default function Planner({
                 </div>
 
                 <div className="agenda-blocks">
-                  {dayBlocks.length === 0 && (
+                  {dayBlocks.length === 0 && dayGaps.length === 0 && (
                     <div className="agenda-empty">
                       {off ? "Выходной 🌿" : "Свободно"}
                     </div>
                   )}
-                  {dayBlocks.map((b) => (
-                    <div
-                      key={b.id}
-                      className={`agenda-block${b.done ? " done" : ""}`}
-                      onClick={() =>
-                        setEditing({
-                          mode: "edit",
-                          draft: {
-                            id: b.id,
-                            title: b.title,
-                            color: b.color,
-                            date: b.date,
-                            start: b.start,
-                            duration: b.duration,
-                          },
-                        })
-                      }
-                    >
-                      <div
-                        className="agenda-color"
-                        style={{ background: colorDot(b.color) }}
-                      />
-                      <span className="agenda-block-time">{formatTime(b.start)}</span>
-                      <div className="agenda-block-body">
-                        <div className="agenda-block-title">{b.title}</div>
-                        <div className="agenda-block-dur">{formatDuration(b.duration)}</div>
+                  {dayBlocks.map((b) => {
+                    const afterGaps = dayGaps.filter(
+                      (gap) => gap.start === b.start + b.duration
+                    );
+
+                    return (
+                      <div key={b.id} className="agenda-item-group">
+                        <div
+                          className="agenda-block"
+                          onClick={() =>
+                            setEditing({
+                              mode: "edit",
+                              draft: {
+                                id: b.id,
+                                title: b.title,
+                                color: b.color,
+                                date: b.date,
+                                start: b.start,
+                                duration: b.duration,
+                              },
+                            })
+                          }
+                        >
+                          <div
+                            className="agenda-color"
+                            style={{ background: colorDot(b.color) }}
+                          />
+                          <span className="agenda-block-time">{formatTime(b.start)}</span>
+                          <div className="agenda-block-body">
+                            <div className="agenda-block-title">{b.title}</div>
+                            <div className="agenda-block-dur">
+                              {formatTime(b.start + b.duration)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {afterGaps.map((gap) => (
+                          <button
+                            key={gap.id}
+                            className={`agenda-gap agenda-gap-${gap.variant}`}
+                            onClick={() => setAddSheetDay(dayKey)}
+                          >
+                            <span className="agenda-gap-time">
+                              {formatTime(gap.start)}–{formatTime(gap.end)}
+                            </span>
+                            <span className="agenda-gap-body">
+                              <span className="agenda-gap-title">Пустота</span>
+                              <span className="agenda-gap-hint">
+                                Влезет{" "}
+                                {gap.fits
+                                  .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
+                                  .join(" или ")}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
                       </div>
+                    );
+                  })}
+
+                  {dayBlocks.length === 0 &&
+                    dayGaps.map((gap) => (
                       <button
-                        className={`agenda-block-toggle${b.done ? " done" : ""}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleDone(b);
-                        }}
-                      />
-                    </div>
-                  ))}
+                        key={gap.id}
+                        className={`agenda-gap agenda-gap-${gap.variant}`}
+                        onClick={() => setAddSheetDay(dayKey)}
+                      >
+                        <span className="agenda-gap-time">
+                          {formatTime(gap.start)}–{formatTime(gap.end)}
+                        </span>
+                        <span className="agenda-gap-body">
+                          <span className="agenda-gap-title">Пустота</span>
+                          <span className="agenda-gap-hint">
+                            Влезет{" "}
+                            {gap.fits
+                              .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
+                              .join(" или ")}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
                 </div>
 
                 {!off && (

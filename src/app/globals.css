@@ -1442,6 +1442,13 @@ body::before {
   .mv-week .week-agenda {
     display: none;
   }
+  .mv-week-list .calendar-area {
+    display: none;
+  }
+  .mv-week-list .week-agenda {
+    display: block;
+    height: calc(100dvh - 208px);
+  }
   .mv-day .week-agenda {
     display: none;
   }
@@ -1506,16 +1513,18 @@ body::before {
 .agenda-blocks {
   padding: 0 10px;
 }
+.agenda-item-group {
+  border-top: 1px solid rgba(196, 189, 180, 0.25);
+}
+.agenda-item-group:first-child {
+  border-top: none;
+}
 .agenda-block {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 8px;
-  border-top: 1px solid rgba(196, 189, 180, 0.25);
   cursor: pointer;
-}
-.agenda-block:first-child {
-  border-top: none;
 }
 .agenda-block.done {
   opacity: 0.5;
@@ -1568,6 +1577,49 @@ body::before {
   padding: 12px 8px;
   font-size: 13px;
   color: var(--light-gray);
+}
+.agenda-gap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 10px 8px;
+  border: 1px dashed rgba(122, 155, 122, 0.45);
+  border-radius: 11px;
+  background: rgba(122, 155, 122, 0.08);
+  color: var(--charcoal);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.agenda-item-group .agenda-gap {
+  margin: 0 0 10px 40px;
+  width: calc(100% - 40px);
+}
+.agenda-gap-empty-day {
+  margin-top: 8px;
+}
+.agenda-gap-time {
+  width: 82px;
+  flex-shrink: 0;
+  color: var(--sage);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.agenda-gap-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.agenda-gap-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+.agenda-gap-hint {
+  color: var(--mid-gray);
+  font-size: 12px;
+  line-height: 1.25;
 }
 .agenda-add {
   width: 100%;
