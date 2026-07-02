@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       const end = addDays(new Date(weekStart), 6);
       return {
         weekStart,
-        label: `${new Date(weekStart).getUTCDate()}–${end.getUTCDate()}`,
+        label: `${new Date(weekStart).getUTCDate()} до ${end.getUTCDate()}`,
         ...v,
       };
     });

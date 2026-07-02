@@ -542,7 +542,7 @@ export default function Planner({
     try {
       if (drag.mode === "create") {
         if (dayOffSet.has(dayKey)) {
-          setError("Женя, это выходной — давай оставим его свободным");
+          setError("Женя, это выходной, давай оставим его свободным");
           return;
         }
         const created = await api.createBlock({
@@ -559,7 +559,7 @@ export default function Planner({
         flashPlaced(created.id);
         setBundle((b) => {
           const blocks = [...b.blocks, created];
-          // подсказка о свободном месте — для обязательных кирпичиков
+          // Подсказка о свободном месте для любимых кирпичиков.
           if (drag.kind) {
             const dayBlocks = blocks.filter((x) => x.date === dayKey);
             const gap = maxFreeGap(dayBlocks);
@@ -697,7 +697,7 @@ export default function Planner({
   const addStandardBlock = async (dayKey: string, t: TemplateDTO) => {
     setAddSheetDay(null);
     if (dayOffSet.has(dayKey)) {
-      setError("Женя, это выходной — давай оставим его свободным");
+      setError("Женя, это выходной, давай оставим его свободным");
       return;
     }
     try {
@@ -732,7 +732,7 @@ export default function Planner({
     }
     const dayKey = bundle.days[dayIndex];
     if (dayOffSet.has(dayKey)) {
-      setError("Женя, это выходной — давай оставим его свободным");
+      setError("Женя, это выходной, давай оставим его свободным");
       return;
     }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1288,7 +1288,7 @@ export default function Planner({
                             onClick={() => setAddSheetDay(dayKey)}
                           >
                             <span className="agenda-gap-time">
-                              {formatTime(gap.start)}–{formatTime(gap.end)}
+                              {formatTime(gap.start)} до {formatTime(gap.end)}
                             </span>
                             <span className="agenda-gap-body">
                               <span className="agenda-gap-title">Окошко</span>
@@ -1319,7 +1319,7 @@ export default function Planner({
                         onClick={() => setAddSheetDay(dayKey)}
                       >
                         <span className="agenda-gap-time">
-                          {formatTime(gap.start)}–{formatTime(gap.end)}
+                          {formatTime(gap.start)} до {formatTime(gap.end)}
                         </span>
                         <span className="agenda-gap-body">
                           <span className="agenda-gap-title">Окошко</span>
@@ -1355,7 +1355,7 @@ export default function Planner({
             <div className="norm-tray">
               <div className="norm-tray-title">Любимые блоки недели</div>
               <div className="norm-tray-hint">
-                Женя, пожалуйста, перенеси их в подходящие окошки — блок аккуратно встанет.
+                Женя, пожалуйста, перенеси их в подходящие окошки. Блок аккуратно встанет.
               </div>
               <div className="tray-bricks">
                 {normTray.flatMap((n) =>
@@ -1374,7 +1374,7 @@ export default function Planner({
             </div>
           )}
 
-          {/* Лоток «Хочешь ещё?» — необязательные блоки сверх нормы */}
+          {/* Лоток дополнительных блоков сверх нормы */}
           {trayRemaining === 0 && !extrasHidden && (
             <div className="norm-tray">
               <div className="norm-tray-title">Если захочется ещё</div>
@@ -1669,7 +1669,7 @@ export default function Planner({
               Женя, неделя собрана
             </div>
             <p style={{ fontSize: 13, color: "var(--mid-gray)", marginBottom: 20 }}>
-              Любимые блоки нашли свои места. Можно выдохнуть — и пусть всё идёт
+              Любимые блоки нашли свои места. Можно выдохнуть, и пусть всё идёт
               мягко 💛
             </p>
             <button
@@ -1686,7 +1686,7 @@ export default function Planner({
   );
 }
 
-// Линия «сейчас» — позиция по локальному времени.
+// Линия «сейчас» по локальному времени.
 function NowLine() {
   const [top, setTop] = useState<number | null>(null);
   useEffect(() => {

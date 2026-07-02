@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       where: { date: { gte: weekStart, lt: weekEnd }, dayOff: true },
     });
     if (existing && toDateKey(existing.date) !== body.date) {
-      return badRequest("В неделе уже есть выходной — снимите его сначала");
+      return badRequest("В неделе уже есть выходной, пожалуйста, сними его сначала");
     }
   }
 

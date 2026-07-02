@@ -60,7 +60,7 @@ export const NORMS: Record<
 export const NORM_TYPES = Object.keys(NORMS) as NormType[];
 
 // Постоянные (переходящие из недели в неделю) события.
-// day: 0 = Пн … 6 = Вс; start — минуты от полуночи.
+// day: 0 = Пн … 6 = Вс; start в минутах от полуночи.
 export interface RecurringEvent {
   title: string;
   color: ColorKey;

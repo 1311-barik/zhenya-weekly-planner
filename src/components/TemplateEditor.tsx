@@ -17,7 +17,7 @@ const DURATIONS = [
 ];
 
 const KINDS = [
-  { label: "— обычный", value: "" },
+  { label: "обычный", value: "" },
   { label: "🧵 норма Ателье", value: "atelier" },
   { label: "🏋️ норма Спорт", value: "gym" },
 ];
@@ -78,7 +78,7 @@ export default function TemplateEditor({
         <div className="popup-title serif">Библиотека блоков</div>
         <p style={{ fontSize: 13, color: "var(--mid-gray)", marginBottom: 16 }}>
           Это стандартные блоки для быстрого добавления. Меняй название, цвет и
-          длительность — обновится в библиотеке.
+          длительность. Всё обновится в библиотеке.
         </p>
 
         <div className="tmpl-list">

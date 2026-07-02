@@ -2,8 +2,8 @@ import { cookies } from "next/headers";
 
 export const AUTH_COOKIE = "pl_token";
 
-// MVP-авторизация: если AUTH_TOKEN не задан в .env — доступ открыт
-// (без фрикции при локальном запуске). Если задан — нужен совпадающий
+// MVP-авторизация: если AUTH_TOKEN не задан в .env, доступ открыт
+// (без фрикции при локальном запуске). Если задан, нужен совпадающий
 // токен в cookie pl_token (его ставит /login).
 export function authRequired(): boolean {
   return Boolean(process.env.AUTH_TOKEN && process.env.AUTH_TOKEN.length > 0);

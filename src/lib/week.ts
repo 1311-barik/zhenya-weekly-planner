@@ -1,6 +1,6 @@
-// Работа с датами недели. Канонический формат даты — "YYYY-MM-DD".
+// Работа с датами недели. Канонический формат даты: "YYYY-MM-DD".
 // Дни храним как UTC-полночь соответствующего календарного дня,
-// чтобы избежать сдвигов часового пояса (приложение — однопользовательское).
+// чтобы избежать сдвигов часового пояса (приложение однопользовательское).
 
 export type DateKey = string; // "YYYY-MM-DD"
 
@@ -50,7 +50,7 @@ const MONTHS_GEN = [
   "июля", "августа", "сентября", "октября", "ноября", "декабря",
 ];
 
-// "23 — 29 июня 2025"
+// "23 до 29 июня 2025"
 export function formatWeekTitle(weekStart: Date): string {
   const end = addDays(weekStart, 6);
   const d1 = weekStart.getUTCDate();
@@ -59,7 +59,7 @@ export function formatWeekTitle(weekStart: Date): string {
   const m2 = MONTHS_GEN[end.getUTCMonth()];
   const y = end.getUTCFullYear();
   if (weekStart.getUTCMonth() === end.getUTCMonth()) {
-    return `${d1} — ${d2} ${m2} ${y}`;
+    return `${d1} до ${d2} ${m2} ${y}`;
   }
-  return `${d1} ${m1} — ${d2} ${m2} ${y}`;
+  return `${d1} ${m1} до ${d2} ${m2} ${y}`;
 }

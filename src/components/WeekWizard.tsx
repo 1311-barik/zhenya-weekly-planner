@@ -28,7 +28,7 @@ export default function WeekWizard({
   const [taskInput, setTaskInput] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Постоянные (переходящие) события — блоки с флагом recurring.
+  // Постоянные события с флагом recurring.
   const recurringBlocks = useMemo(
     () =>
       bundle.blocks
@@ -90,7 +90,7 @@ export default function WeekWizard({
           ))}
         </div>
 
-        {/* ШАГ 1 — постоянные события */}
+        {/* ШАГ 1. Постоянные события */}
         {step === 1 && (
           <>
             <div className="wizard-step-label">Шаг 1 из 2 · Постоянные события</div>
@@ -100,7 +100,7 @@ export default function WeekWizard({
             </p>
             <div className="wizard-body">
               {recurringBlocks.length === 0 && (
-                <p className="wizard-row-sub">На этой неделе постоянных событий нет — спокойно.</p>
+                <p className="wizard-row-sub">На этой неделе постоянных событий нет, спокойно.</p>
               )}
               {recurringBlocks.map((b) => {
                 const off = removed.has(b.id);
@@ -125,7 +125,7 @@ export default function WeekWizard({
           </>
         )}
 
-        {/* ШАГ 2 — разовые дела */}
+        {/* ШАГ 2. Разовые дела */}
         {step === 2 && (
           <>
             <div className="wizard-step-label">Шаг 2 из 2 · Разовые дела</div>
@@ -147,7 +147,7 @@ export default function WeekWizard({
             </div>
             <div className="wizard-body">
               {bundle.tasks.length === 0 && (
-                <p className="wizard-row-sub">Пока здесь пусто — можно спокойно пропустить.</p>
+                <p className="wizard-row-sub">Пока здесь пусто, можно спокойно пропустить.</p>
               )}
               {bundle.tasks.map((t) => (
                 <div key={t.id} className="wizard-row">

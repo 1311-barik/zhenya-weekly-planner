@@ -116,7 +116,7 @@ export function playSnap() {
     osc.start(now);
     osc.stop(now + 0.18);
   } catch {
-    // звук — не критично
+    // Звук не критичен.
   }
 }
 

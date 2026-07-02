@@ -16,7 +16,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "sheyn's planner — недельный планировщик",
+  title: "sheyn's planner, недельный планировщик",
   description: "Персональный недельный планировщик",
 };
 

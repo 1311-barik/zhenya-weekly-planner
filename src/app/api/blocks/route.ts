@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   // Запрет добавления в выходной день.
   const dayState = await prisma.dayState.findUnique({ where: { date: fromDateKey(date) } });
   if (dayState?.dayOff) {
-    return badRequest("Это выходной день — новые блоки не добавляются");
+    return badRequest("Это выходной день, давай оставим его свободным");
   }
 
   const snappedStart = Math.min(

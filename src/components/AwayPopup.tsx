@@ -93,7 +93,7 @@ export default function AwayPopup({
               lineHeight: 1.5,
             }}
           >
-            🌿 Выходные: <b>{human(start)}</b> — <b>{human(endDate)}</b>
+            🌿 Выходные: <b>{human(start)}</b> до <b>{human(endDate)}</b>
             <br />
             🏠 Возвращение: <b>{human(backDate)}</b>
           </div>
