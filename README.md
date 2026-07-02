@@ -55,33 +55,15 @@ prisma/seed.mjs        сид стандартных блоков
 src/lib/               config (нормы/цвета/время), week (даты), store (бандл недели),
                        client (геометрия/API), auth, http, types
 src/app/api/           route handlers: week, blocks, tasks, day-off, away, templates, login
-src/components/        Planner (главный), EditBlockPopup, AwayPopup
+src/components/        Planner (главный), EditBlockPopup, AwayPopup, StatsPanel,
+                       WeekWizard, TemplateEditor
 ```
 
-## Telegram-бот (Фаза 2)
+## Уведомления
 
-Самостоятельный воркер `bot/bot.mjs` — читает ту же БД, шлёт уведомления,
-отвечает на команды. Запускается отдельным systemd-сервисом `planner-bot`.
-
-Возможности:
-- Утренняя сводка дня (08:00)
-- Напоминание о незакрытой норме (пятница 18:00)
-- Анонс новой недели (воскресенье 20:00)
-- Напоминание за 30 минут до блока
-- Команды `/today` (план на сегодня) и `/start` (выдаёт твой `chat_id`)
-
-Подключение:
-1. Создай бота через [@BotFather](https://t.me/BotFather) → получи токен.
-2. На сервере в `.env`: `TELEGRAM_BOT_TOKEN=<токен>`.
-3. Установи и запусти сервис:
-   ```bash
-   cp deploy/planner-bot.service /etc/systemd/system/
-   systemctl daemon-reload && systemctl enable --now planner-bot
-   ```
-4. Напиши боту `/start` — он пришлёт твой `chat_id`.
-5. Добавь `TELEGRAM_CHAT_ID=<id>` в `.env` и `systemctl restart planner-bot`.
-
-Часовой пояс расписаний — `TZ` в юните (по умолчанию `Europe/Paris`, Ницца).
+Напоминания — внутри приложения: при первом заходе за день всплывает
+**сводка** (план на сегодня, статус нормы, напоминание про выходной).
+Внешний Telegram-бот не используется.
 
 ## Фаза 3 (реализовано)
 
