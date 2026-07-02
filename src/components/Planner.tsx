@@ -175,10 +175,12 @@ export default function Planner({
   const [appNoticeHidden, setAppNoticeHidden] = useState(false);
   const [dayOffPromptHidden, setDayOffPromptHidden] = useState(false);
   const [dayOffPromptChoice, setDayOffPromptChoice] = useState<string | null>(null);
+  const [agendaDropId, setAgendaDropId] = useState<string | null>(null);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
   const previewRef = useRef<LivePreview | null>(null);
+  const agendaDropRef = useRef<string | null>(null);
   const pointerUpRef = useRef<(() => void) | null>(null);
   const movedRef = useRef(false);
   const dragOriginRef = useRef({ x: 0, y: 0 });
@@ -443,6 +445,24 @@ export default function Planner({
     return null;
   };
 
+  const findAgendaGap = (clientX: number, clientY: number, duration: number) => {
+    const hit = document
+      .elementsFromPoint(clientX, clientY)
+      .find((el) => el instanceof HTMLElement && el.closest(".agenda-gap"))
+      ?.closest(".agenda-gap") as HTMLElement | undefined;
+    if (!hit) return null;
+
+    const dayIndex = Number(hit.dataset.dayIndex);
+    const start = Number(hit.dataset.start);
+    const end = Number(hit.dataset.end);
+    const id = hit.dataset.gapId;
+    if (!Number.isFinite(dayIndex) || !Number.isFinite(start) || !Number.isFinite(end) || !id) {
+      return null;
+    }
+    if (end - start < duration) return null;
+    return { dayIndex, start, end, id };
+  };
+
   // ── обработчики перетаскивания (общие) ──
   const onPointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
@@ -453,26 +473,34 @@ export default function Planner({
       if (Math.hypot(e.clientX - o.x, e.clientY - o.y) < DRAG_THRESHOLD) return;
       movedRef.current = true;
     }
-    const hit = findColumn(e.clientX, e.clientY);
-    if (!hit) return;
+    const agendaHit =
+      drag.mode !== "resize" ? findAgendaGap(e.clientX, e.clientY, drag.duration) : null;
+    const hit = agendaHit ? null : findColumn(e.clientX, e.clientY);
+    if (!agendaHit && !hit) {
+      if (agendaDropRef.current) {
+        agendaDropRef.current = null;
+        setAgendaDropId(null);
+      }
+      return;
+    }
 
     let start: number;
     let duration: number;
     if (drag.mode === "move") {
-      start = snapMin(yToMin(hit.relY - drag.grabOffsetY));
+      start = agendaHit ? agendaHit.start : snapMin(yToMin(hit!.relY - drag.grabOffsetY));
       duration = drag.duration;
     } else if (drag.mode === "resize") {
       start = drag.start;
-      duration = Math.max(snapMin(yToMin(hit.relY) - start), MIN_BLOCK_MINUTES);
+      duration = Math.max(snapMin(yToMin(hit!.relY) - start), MIN_BLOCK_MINUTES);
     } else {
-      start = snapMin(yToMin(hit.relY));
+      start = agendaHit ? agendaHit.start : snapMin(yToMin(hit!.relY));
       duration = drag.duration;
     }
     start = Math.min(Math.max(start, DAY_START_HOUR * 60), DAY_END_MIN - MIN_BLOCK_MINUTES);
     duration = Math.min(duration, DAY_END_MIN - start);
 
     const next: LivePreview = {
-      dayIndex: hit.index,
+      dayIndex: agendaHit ? agendaHit.dayIndex : hit!.index,
       start,
       duration,
       mode: drag.mode,
@@ -480,7 +508,12 @@ export default function Planner({
       title: drag.mode === "create" ? drag.title : undefined,
       color: drag.mode === "create" ? drag.color : undefined,
     };
-    const snapKey = `${hit.index}:${start}:${duration}`;
+    const nextDropId = agendaHit?.id ?? null;
+    if (nextDropId !== agendaDropRef.current) {
+      agendaDropRef.current = nextDropId;
+      setAgendaDropId(nextDropId);
+    }
+    const snapKey = `${next.dayIndex}:${start}:${duration}`;
     if (snapKey !== lastSnapKeyRef.current) {
       if (e.pointerType === "touch") window.navigator.vibrate?.(8);
       lastSnapKeyRef.current = snapKey;
@@ -496,7 +529,9 @@ export default function Planner({
     const prev = previewRef.current;
     dragRef.current = null;
     previewRef.current = null;
+    agendaDropRef.current = null;
     lastSnapKeyRef.current = "";
+    setAgendaDropId(null);
     setPreview(null);
     if (movedRef.current) suppressClick.current = true;
 
@@ -569,6 +604,8 @@ export default function Planner({
 
   const startDrag = (state: DragState, e: React.PointerEvent) => {
     dragRef.current = state;
+    agendaDropRef.current = null;
+    setAgendaDropId(null);
     lastSnapKeyRef.current = "";
     movedRef.current = false;
     dragOriginRef.current = { x: e.clientX, y: e.clientY };
@@ -579,7 +616,7 @@ export default function Planner({
   // ── drag существующего блока (тело) ──
   const onBlockPointerDown = (e: React.PointerEvent, block: BlockDTO) => {
     const target = e.target as HTMLElement;
-    if (target.closest(".task-toggle") || target.closest(".resize-handle")) return;
+    if (target.closest(".resize-handle")) return;
     e.preventDefault();
     const blockRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     startDrag({
@@ -630,7 +667,7 @@ export default function Planner({
 
   const onTaskPointerDown = (e: React.PointerEvent, task: TaskDTO) => {
     const target = e.target as HTMLElement;
-    if (target.closest(".inbox-del") || target.closest(".task-toggle")) return;
+    if (target.closest(".inbox-del")) return;
     e.preventDefault();
     startDrag({
       mode: "create",
@@ -1126,6 +1163,44 @@ export default function Planner({
           </button>
         </div>
 
+        <div className="mobile-list-tray">
+          {trayRemaining > 0 ? (
+            <>
+              <div className="mobile-list-tray-title">Перетащи в пустоту</div>
+              <div className="mobile-list-bricks">
+                {normTray.flatMap((n) =>
+                  Array.from({ length: n.remaining }, (_, idx) => (
+                    <div
+                      key={`${n.type}-${idx}`}
+                      className={`tray-brick block-${NORM_COLOR[n.type]}`}
+                      onPointerDown={(e) => onNormPointerDown(e, n.type)}
+                      title={`${n.cfg.label}: минимум ${formatDuration(n.cfg.minDuration)}`}
+                    >
+                      {n.cfg.emoji} {n.cfg.label}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mobile-list-tray-title">Можно добавить ещё</div>
+              <div className="mobile-list-bricks">
+                {NORM_TYPES.map((type) => (
+                  <div
+                    key={type}
+                    className={`tray-brick block-${NORM_COLOR[type]}`}
+                    onPointerDown={(e) => onNormPointerDown(e, type)}
+                    title={`${NORMS[type].label}: ${formatDuration(NORMS[type].minDuration)}`}
+                  >
+                    {NORMS[type].emoji} {NORMS[type].label}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* НЕДЕЛЬНАЯ ЛЕНТА (мобильная главная) */}
         <div className="week-agenda">
           {bundle.days.map((dayKey, i) => {
@@ -1170,6 +1245,7 @@ export default function Planner({
                       <div key={b.id} className="agenda-item-group">
                         <div
                           className="agenda-block"
+                          onPointerDown={(e) => onBlockPointerDown(e, b)}
                           onClick={() =>
                             setEditing({
                               mode: "edit",
@@ -1200,7 +1276,13 @@ export default function Planner({
                         {afterGaps.map((gap) => (
                           <button
                             key={gap.id}
-                            className={`agenda-gap agenda-gap-${gap.variant}`}
+                            className={`agenda-gap agenda-gap-${gap.variant}${
+                              agendaDropId === gap.id ? " is-drag-over" : ""
+                            }`}
+                            data-gap-id={gap.id}
+                            data-day-index={i}
+                            data-start={gap.start}
+                            data-end={gap.end}
                             onClick={() => setAddSheetDay(dayKey)}
                           >
                             <span className="agenda-gap-time">
@@ -1225,7 +1307,13 @@ export default function Planner({
                     dayGaps.map((gap) => (
                       <button
                         key={gap.id}
-                        className={`agenda-gap agenda-gap-${gap.variant}`}
+                        className={`agenda-gap agenda-gap-${gap.variant}${
+                          agendaDropId === gap.id ? " is-drag-over" : ""
+                        }`}
+                        data-gap-id={gap.id}
+                        data-day-index={i}
+                        data-start={gap.start}
+                        data-end={gap.end}
                         onClick={() => setAddSheetDay(dayKey)}
                       >
                         <span className="agenda-gap-time">
