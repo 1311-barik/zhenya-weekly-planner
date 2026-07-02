@@ -343,6 +343,24 @@ export default function Planner({
         continue;
       }
 
+      const first = blocks[0];
+      if (first.start >= 14 * 60) {
+        const end = first.start;
+        const start = Math.max(DAY_START_MIN, end - NORMS.atelier.minDuration);
+        const duration = end - start;
+        const fits = NORM_TYPES.filter((type) => duration >= NORMS[type].minDuration);
+
+        if (fits.length > 0) {
+          gaps.push({
+            id: `${dayKey}-${start}-${end}`,
+            start,
+            end,
+            fits,
+            variant: "between",
+          });
+        }
+      }
+
       for (let i = 0; i < blocks.length; i++) {
         const current = blocks[i];
         const next = blocks[i + 1];
@@ -625,21 +643,6 @@ export default function Planner({
     }, e);
   };
 
-  // ── тогл выполнения ──
-  const toggleDone = async (block: BlockDTO) => {
-    const done = !block.done;
-    setBundle((b) => ({
-      ...b,
-      blocks: b.blocks.map((x) => (x.id === block.id ? { ...x, done } : x)),
-    }));
-    try {
-      await api.updateBlock(block.id, { done });
-    } catch (e) {
-      setError((e as Error).message);
-      refresh();
-    }
-  };
-
   // ── добавление блока тапом (мобильная лента) ──
   // Первый свободный слот в дне, начиная с 9:00.
   const firstFreeStart = (dayKey: string, duration: number) => {
@@ -877,7 +880,7 @@ export default function Planner({
     return (
       <div
         key={block.id}
-        className={`task-block block-${block.color}${block.done ? " done-block" : ""}${
+        className={`task-block block-${block.color}${
           dragging ? " dragging" : ""
         }${block.id === justPlacedId ? " snap-pop" : ""}`}
         style={{
@@ -911,14 +914,6 @@ export default function Planner({
         <div className="task-block-time">
           {formatTime(start)} · {formatDuration(duration)}
         </div>
-        <div
-          className={`task-toggle${block.done ? " done" : ""}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleDone(block);
-          }}
-        />
         <div className="resize-handle" onPointerDown={(e) => onResizePointerDown(e, block)} />
       </div>
     );

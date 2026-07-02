@@ -56,16 +56,16 @@ export function formatDuration(min: number): string {
 export function computeNorms(blocks: BlockDTO[]): NormProgress[] {
   return NORM_TYPES.map((type: NormType) => {
     const cfg = NORMS[type];
-    const done = blocks.filter(
-      (b) => b.kind === type && b.done && b.duration >= cfg.minDuration
+    const placed = blocks.filter(
+      (b) => b.kind === type && b.duration >= cfg.minDuration
     ).length;
     return {
       type,
       emoji: cfg.emoji,
       label: cfg.label,
-      done,
+      done: placed,
       required: cfg.required,
-      complete: done >= cfg.required,
+      complete: placed >= cfg.required,
     };
   });
 }
