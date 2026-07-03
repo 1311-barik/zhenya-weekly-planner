@@ -97,7 +97,14 @@ function layoutDay(blocks: BlockDTO[]): Layout {
 
 // ───────── Состояние перетаскивания ─────────
 type DragState =
-  | { mode: "move"; id: string; grabOffsetY: number; duration: number }
+  | {
+      mode: "move";
+      id: string;
+      grabOffsetY: number;
+      duration: number;
+      title: string;
+      color: ColorKey;
+    }
   | { mode: "resize"; id: string; start: number }
   | {
       mode: "create";
@@ -122,6 +129,14 @@ interface LivePreview {
 interface AppNotice {
   icon: string;
   text: string;
+}
+
+interface DragOverlay {
+  x: number;
+  y: number;
+  title: string;
+  color: ColorKey;
+  duration: number;
 }
 
 interface AgendaGap {
@@ -176,6 +191,7 @@ export default function Planner({
   const [dayOffPromptHidden, setDayOffPromptHidden] = useState(false);
   const [dayOffPromptChoice, setDayOffPromptChoice] = useState<string | null>(null);
   const [agendaDropId, setAgendaDropId] = useState<string | null>(null);
+  const [dragOverlay, setDragOverlay] = useState<DragOverlay | null>(null);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -311,7 +327,29 @@ export default function Planner({
 
   const agendaGapsByDay = useMemo(() => {
     const out: Record<string, AgendaGap[]> = {};
+    const displayStart = Math.max(DAY_START_MIN, 10 * 60);
     const focusEnd = Math.min(DAY_END_MIN, 20 * 60);
+    const minUsefulGap = Math.min(...NORM_TYPES.map((type) => NORMS[type].minDuration));
+    const makeGap = (
+      dayKey: string,
+      start: number,
+      end: number,
+      variant: AgendaGap["variant"]
+    ): AgendaGap | null => {
+      const safeStart = Math.max(displayStart, start);
+      const safeEnd = Math.min(focusEnd, end);
+      const duration = safeEnd - safeStart;
+      if (duration < minUsefulGap) return null;
+      const fits = NORM_TYPES.filter((type) => duration >= NORMS[type].minDuration);
+      if (fits.length === 0) return null;
+      return {
+        id: `${dayKey}-${safeStart}-${safeEnd}`,
+        start: safeStart,
+        end: safeEnd,
+        fits,
+        variant,
+      };
+    };
 
     for (const dayKey of bundle.days) {
       const blocks = (blocksByDay[dayKey] ?? [])
@@ -325,61 +363,26 @@ export default function Planner({
       }
 
       if (blocks.length === 0) {
-        gaps.push(
-          {
-            id: `${dayKey}-empty-1`,
-            start: Math.max(DAY_START_MIN, 10 * 60),
-            end: Math.min(focusEnd, 14 * 60),
-            fits: ["atelier", "gym"],
-            variant: "empty-day",
-          },
-          {
-            id: `${dayKey}-empty-2`,
-            start: Math.max(DAY_START_MIN, 15 * 60),
-            end: Math.min(focusEnd, 18 * 60),
-            fits: ["gym"],
-            variant: "empty-day",
-          }
-        );
-        out[dayKey] = gaps.filter((gap) => gap.end - gap.start >= NORMS.gym.minDuration);
+        const first = makeGap(dayKey, displayStart, Math.min(focusEnd, 14 * 60), "empty-day");
+        const second = makeGap(dayKey, 15 * 60, Math.min(focusEnd, 18 * 60), "empty-day");
+        if (first) gaps.push(first);
+        if (second) gaps.push(second);
+        out[dayKey] = gaps;
         continue;
       }
 
-      const first = blocks[0];
-      if (first.start >= 14 * 60) {
-        const end = first.start;
-        const start = Math.max(DAY_START_MIN, end - NORMS.atelier.minDuration);
-        const duration = end - start;
-        const fits = NORM_TYPES.filter((type) => duration >= NORMS[type].minDuration);
-
-        if (fits.length > 0) {
-          gaps.push({
-            id: `${dayKey}-${start}-${end}`,
-            start,
-            end,
-            fits,
-            variant: "between",
-          });
+      let cursor = displayStart;
+      for (const block of blocks) {
+        if (block.start > cursor) {
+          const gap = makeGap(dayKey, cursor, block.start, "between");
+          if (gap) gaps.push(gap);
         }
+        cursor = Math.max(cursor, block.start + block.duration);
+        if (cursor >= focusEnd) break;
       }
-
-      for (let i = 0; i < blocks.length; i++) {
-        const current = blocks[i];
-        const next = blocks[i + 1];
-        const start = current.start + current.duration;
-        const end = Math.min(next ? next.start : focusEnd, focusEnd);
-        const duration = end - start;
-        const fits = NORM_TYPES.filter((type) => duration >= NORMS[type].minDuration);
-
-        if (fits.length > 0) {
-          gaps.push({
-            id: `${dayKey}-${start}-${end}`,
-            start,
-            end,
-            fits,
-            variant: "between",
-          });
-        }
+      if (cursor < focusEnd) {
+        const gap = makeGap(dayKey, cursor, focusEnd, "between");
+        if (gap) gaps.push(gap);
       }
 
       out[dayKey] = gaps;
@@ -460,13 +463,29 @@ export default function Planner({
       return null;
     }
     if (end - start < duration) return null;
-    return { dayIndex, start, end, id };
+    const rect = hit.getBoundingClientRect();
+    const available = end - start - duration;
+    const ratio = rect.width > 0 ? Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1) : 0;
+    const placedStart =
+      available > 0
+        ? Math.min(end - duration, start + snapMin(available * ratio))
+        : start;
+    return { dayIndex, start: placedStart, end, id };
   };
 
   // ── обработчики перетаскивания (общие) ──
   const onPointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.mode !== "resize") {
+      setDragOverlay({
+        x: e.clientX,
+        y: e.clientY,
+        title: drag.title,
+        color: drag.color,
+        duration: drag.duration,
+      });
+    }
     // Порог: клик с микро-сдвигом не считается перетаскиванием.
     if (!movedRef.current) {
       const o = dragOriginRef.current;
@@ -532,6 +551,7 @@ export default function Planner({
     agendaDropRef.current = null;
     lastSnapKeyRef.current = "";
     setAgendaDropId(null);
+    setDragOverlay(null);
     setPreview(null);
     if (movedRef.current) suppressClick.current = true;
 
@@ -606,6 +626,17 @@ export default function Planner({
     dragRef.current = state;
     agendaDropRef.current = null;
     setAgendaDropId(null);
+    setDragOverlay(
+      state.mode === "resize"
+        ? null
+        : {
+            x: e.clientX,
+            y: e.clientY,
+            title: state.title,
+            color: state.color,
+            duration: state.duration,
+          }
+    );
     lastSnapKeyRef.current = "";
     movedRef.current = false;
     dragOriginRef.current = { x: e.clientX, y: e.clientY };
@@ -624,6 +655,8 @@ export default function Planner({
       id: block.id,
       grabOffsetY: e.clientY - blockRect.top,
       duration: block.duration,
+      title: block.title,
+      color: block.color,
     }, e);
   };
 
@@ -1212,6 +1245,10 @@ export default function Planner({
               .slice()
               .sort((a, b) => a.start - b.start);
             const dayGaps = agendaGapsByDay[dayKey] ?? [];
+            const beforeFirstGaps =
+              dayBlocks.length > 0
+                ? dayGaps.filter((gap) => gap.end <= dayBlocks[0].start)
+                : [];
             return (
               <div
                 key={dayKey}
@@ -1238,6 +1275,32 @@ export default function Planner({
                       {off ? "Выходной 🌿" : "Свободно"}
                     </div>
                   )}
+                  {beforeFirstGaps.map((gap) => (
+                    <button
+                      key={gap.id}
+                      className={`agenda-gap agenda-gap-${gap.variant}${
+                        agendaDropId === gap.id ? " is-drag-over" : ""
+                      }`}
+                      data-gap-id={gap.id}
+                      data-day-index={i}
+                      data-start={gap.start}
+                      data-end={gap.end}
+                      onClick={() => setAddSheetDay(dayKey)}
+                    >
+                      <span className="agenda-gap-time">
+                        {formatTime(gap.start)} до {formatTime(gap.end)}
+                      </span>
+                      <span className="agenda-gap-body">
+                        <span className="agenda-gap-title">Окошко</span>
+                        <span className="agenda-gap-hint">
+                          Сюда мягко встанет{" "}
+                          {gap.fits
+                            .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
+                            .join(" или ")}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
                   {dayBlocks.map((b) => {
                     const afterGaps = dayGaps.filter(
                       (gap) => gap.start === b.start + b.duration
@@ -1519,6 +1582,18 @@ export default function Planner({
           }}
         >
           Загрузка…
+        </div>
+      )}
+
+      {dragOverlay && (
+        <div
+          className={`drag-follower block-${dragOverlay.color}`}
+          style={{
+            transform: `translate3d(${dragOverlay.x + 14}px, ${dragOverlay.y + 14}px, 0)`,
+          }}
+        >
+          <div className="drag-follower-title">{dragOverlay.title}</div>
+          <div className="drag-follower-time">{formatDuration(dragOverlay.duration)}</div>
         </div>
       )}
 

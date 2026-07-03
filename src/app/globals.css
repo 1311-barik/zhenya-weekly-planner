@@ -475,6 +475,34 @@ body::before {
   opacity: 0.92;
 }
 
+.drag-follower {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 240;
+  width: min(148px, calc(100vw - 28px));
+  min-width: 0;
+  border-radius: 10px;
+  padding: 9px 11px;
+  pointer-events: none;
+  box-sizing: border-box;
+  box-shadow: 0 14px 34px rgba(58, 53, 48, 0.22);
+  opacity: 0.96;
+  will-change: transform;
+}
+.drag-follower-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drag-follower-time {
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.72;
+}
+
 .task-block-title {
   font-weight: 500;
   white-space: nowrap;
