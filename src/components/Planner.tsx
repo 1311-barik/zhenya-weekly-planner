@@ -128,11 +128,6 @@ interface LivePreview {
   color?: ColorKey;
 }
 
-interface AppNotice {
-  icon: string;
-  text: string;
-}
-
 interface DragOverlay {
   x: number;
   y: number;
@@ -147,14 +142,6 @@ interface AgendaGap {
   end: number;
   fits: NormType[];
   variant: "empty-day" | "between";
-}
-
-function blockWord(count: number) {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return "блок";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "блока";
-  return "блоков";
 }
 
 export default function Planner({
@@ -189,7 +176,6 @@ export default function Planner({
   const [statsOpen, setStatsOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [extrasHidden, setExtrasHidden] = useState(false);
-  const [appNoticeHidden, setAppNoticeHidden] = useState(false);
   const [dayOffPromptHidden, setDayOffPromptHidden] = useState(false);
   const [dayOffPromptChoice, setDayOffPromptChoice] = useState<string | null>(null);
   const [agendaDropId, setAgendaDropId] = useState<string | null>(null);
@@ -313,39 +299,12 @@ export default function Planner({
     () => toDateKey(startOfWeek(fromDateKey(today))),
     [today]
   );
-  const appNotices = useMemo<AppNotice[]>(() => {
-    if (bundle.weekStart !== currentWeekStart) return [];
-
-    const out: AppNotice[] = [];
-    const missingNorms = norms.filter((n) => !n.complete);
-    if (missingNorms.length > 0) {
-      out.push({
-        icon: "•",
-        text: `Женя, на этой неделе ещё есть место для любимых блоков: ${missingNorms
-          .map((n) => `${n.label} ${n.done}/${n.required}`)
-          .join(", ")}`,
-      });
-    }
-
-    const todayBlocks = (blocksByDay[today] ?? []).length;
-    out.push({
-      icon: "•",
-      text:
-        todayBlocks > 0
-          ? `Сегодня ${todayBlocks} ${blockWord(todayBlocks)}`
-          : "Женя, сегодня день без блоков",
-    });
-
-    return out;
-  }, [blocksByDay, bundle.weekStart, currentWeekStart, norms, today]);
-  const showAppNotice = !appNoticeHidden && appNotices.length > 0;
   const hasWeekDayOff = bundle.dayOff.some((d) => bundle.days.includes(d));
   const showDayOffPrompt =
     bundle.weekStart === currentWeekStart &&
     trayRemaining === 0 &&
     !hasWeekDayOff &&
     !dayOffPromptHidden &&
-    !showAppNotice &&
     !celebrate &&
     !editing &&
     !awayOpen &&
@@ -1775,36 +1734,6 @@ export default function Planner({
         >
           <div className="drag-follower-title">{dragOverlay.title}</div>
           <div className="drag-follower-time">{formatDuration(dragOverlay.duration)}</div>
-        </div>
-      )}
-
-      {showAppNotice && (
-        <div className="popup-overlay app-notice-overlay" onClick={() => setAppNoticeHidden(true)}>
-          <div className="popup app-notice-popup" onClick={(e) => e.stopPropagation()}>
-            <div className="popup-title serif">Женя, план на сейчас</div>
-            <div className="app-notice-list">
-              {appNotices.map((notice) => (
-                <div key={notice.text} className="app-notice-row">
-                  <span className="app-notice-icon">{notice.icon}</span>
-                  <span>{notice.text}</span>
-                </div>
-              ))}
-            </div>
-            <div className="popup-actions" style={{ justifyContent: "flex-end" }}>
-              <button
-                className="btn-ghost"
-                onClick={() => {
-                  setAppNoticeHidden(true);
-                  setWizardOpen(true);
-                }}
-              >
-                Собрать неделю, пожалуйста
-              </button>
-              <button className="btn-primary" onClick={() => setAppNoticeHidden(true)}>
-                Понятно
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
