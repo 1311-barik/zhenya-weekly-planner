@@ -1552,6 +1552,8 @@ body::before {
   gap: 10px;
   padding: 10px 8px;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
 }
 .agenda-block.done {
   opacity: 0.5;

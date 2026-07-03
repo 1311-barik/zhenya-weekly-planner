@@ -200,6 +200,8 @@ export default function Planner({
   const previewRef = useRef<LivePreview | null>(null);
   const agendaDropRef = useRef<string | null>(null);
   const pointerUpRef = useRef<(() => void) | null>(null);
+  const pointerCancelRef = useRef<((event?: Event) => void) | null>(null);
+  const activePointerRef = useRef<{ id: number; target: Element } | null>(null);
   const movedRef = useRef(false);
   const dragOriginRef = useRef({ x: 0, y: 0 });
   const suppressClick = useRef(false);
@@ -513,6 +515,27 @@ export default function Planner({
   };
 
   // ── обработчики перетаскивания (общие) ──
+  const clearDragState = useCallback(() => {
+    if (activePointerRef.current) {
+      const { id, target } = activePointerRef.current;
+      if (target instanceof HTMLElement) {
+        try {
+          if (target.hasPointerCapture?.(id)) target.releasePointerCapture(id);
+        } catch {
+          // Some mobile webviews drop pointer capture when their browser UI takes focus.
+        }
+      }
+    }
+    activePointerRef.current = null;
+    dragRef.current = null;
+    previewRef.current = null;
+    agendaDropRef.current = null;
+    lastSnapKeyRef.current = "";
+    setAgendaDropId(null);
+    setDragOverlay(null);
+    setPreview(null);
+  }, []);
+
   const onPointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
@@ -584,18 +607,24 @@ export default function Planner({
     setPreview(next);
   }, []);
 
-  const onPointerUp = useCallback(async () => {
+  const removeDragListeners = useCallback(() => {
     window.removeEventListener("pointermove", onPointerMove);
-    if (pointerUpRef.current) window.removeEventListener("pointerup", pointerUpRef.current);
+    if (pointerUpRef.current) {
+      window.removeEventListener("pointerup", pointerUpRef.current);
+      window.removeEventListener("touchend", pointerUpRef.current);
+    }
+    if (pointerCancelRef.current) {
+      window.removeEventListener("pointercancel", pointerCancelRef.current);
+      window.removeEventListener("blur", pointerCancelRef.current);
+      document.removeEventListener("visibilitychange", pointerCancelRef.current);
+    }
+  }, [onPointerMove]);
+
+  const onPointerUp = useCallback(async () => {
+    removeDragListeners();
     const drag = dragRef.current;
     const prev = previewRef.current;
-    dragRef.current = null;
-    previewRef.current = null;
-    agendaDropRef.current = null;
-    lastSnapKeyRef.current = "";
-    setAgendaDropId(null);
-    setDragOverlay(null);
-    setPreview(null);
+    clearDragState();
     if (movedRef.current) suppressClick.current = true;
 
     if (!drag || !prev || !movedRef.current) return;
@@ -693,13 +722,36 @@ export default function Planner({
       setError((e as Error).message);
       refresh();
     }
-  }, [bundle.blocks, bundle.days, dayOffSet, flashInfo, flashPlaced, onPointerMove, placementMessage, refresh]);
+  }, [bundle.blocks, bundle.days, clearDragState, dayOffSet, flashInfo, flashPlaced, placementMessage, refresh, removeDragListeners]);
 
   useEffect(() => {
     pointerUpRef.current = onPointerUp;
   }, [onPointerUp]);
 
+  const onPointerCancel = useCallback(
+    (event?: Event) => {
+      if (event?.type === "visibilitychange" && !document.hidden) return;
+      removeDragListeners();
+      if (movedRef.current) suppressClick.current = true;
+      clearDragState();
+    },
+    [clearDragState, removeDragListeners]
+  );
+
+  useEffect(() => {
+    pointerCancelRef.current = onPointerCancel;
+  }, [onPointerCancel]);
+
   const startDrag = (state: DragState, e: React.PointerEvent) => {
+    const target = e.currentTarget;
+    if (target instanceof HTMLElement) {
+      try {
+        target.setPointerCapture?.(e.pointerId);
+        activePointerRef.current = { id: e.pointerId, target };
+      } catch {
+        activePointerRef.current = null;
+      }
+    }
     dragRef.current = state;
     agendaDropRef.current = null;
     setAgendaDropId(null);
@@ -719,6 +771,10 @@ export default function Planner({
     dragOriginRef.current = { x: e.clientX, y: e.clientY };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("touchend", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    window.addEventListener("blur", onPointerCancel);
+    document.addEventListener("visibilitychange", onPointerCancel);
   };
 
   // ── drag существующего блока (тело) ──
