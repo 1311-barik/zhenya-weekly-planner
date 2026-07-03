@@ -34,6 +34,7 @@ import {
   snapMin,
   yToMin,
 } from "@/lib/client";
+import { findOverlap, findSameNorm, isNormKind } from "@/lib/blockRules";
 import EditBlockPopup, { type BlockDraft } from "./EditBlockPopup";
 import AwayPopup from "./AwayPopup";
 import WeekWizard from "./WeekWizard";
@@ -104,6 +105,7 @@ type DragState =
       duration: number;
       title: string;
       color: ColorKey;
+      kind: NormType | null;
     }
   | { mode: "resize"; id: string; start: number }
   | {
@@ -280,6 +282,31 @@ export default function Planner({
     for (const b of bundle.blocks) (map[b.date] ??= []).push(b);
     return map;
   }, [bundle.blocks, bundle.days]);
+  const placementMessage = useCallback(
+    ({
+      dayKey,
+      start,
+      duration,
+      kind,
+      excludeId,
+    }: {
+      dayKey: string;
+      start: number;
+      duration: number;
+      kind?: NormType | null;
+      excludeId?: string;
+    }) => {
+      const dayBlocks = blocksByDay[dayKey] ?? [];
+      if (findOverlap(dayBlocks, start, duration, excludeId)) {
+        return "Женя, блоки не могут пересекаться по времени";
+      }
+      if (findSameNorm(dayBlocks, kind, excludeId)) {
+        return "Женя, в этот день такой любимый блок уже стоит";
+      }
+      return null;
+    },
+    [blocksByDay]
+  );
   const currentWeekStart = useMemo(
     () => toDateKey(startOfWeek(fromDateKey(today))),
     [today]
@@ -340,7 +367,12 @@ export default function Planner({
       const safeEnd = Math.min(focusEnd, end);
       const duration = safeEnd - safeStart;
       if (duration < minUsefulGap) return null;
-      const fits = NORM_TYPES.filter((type) => duration >= NORMS[type].minDuration);
+      const dayBlocks = blocksByDay[dayKey] ?? [];
+      const fits = NORM_TYPES.filter(
+        (type) =>
+          duration >= NORMS[type].minDuration &&
+          !findSameNorm(dayBlocks, type)
+      );
       if (fits.length === 0) return null;
       return {
         id: `${dayKey}-${safeStart}-${safeEnd}`,
@@ -448,7 +480,12 @@ export default function Planner({
     return null;
   };
 
-  const findAgendaGap = (clientX: number, clientY: number, duration: number) => {
+  const findAgendaGap = (
+    clientX: number,
+    clientY: number,
+    duration: number,
+    kind?: NormType | null
+  ) => {
     const hit = document
       .elementsFromPoint(clientX, clientY)
       .find((el) => el instanceof HTMLElement && el.closest(".agenda-gap"))
@@ -459,10 +496,12 @@ export default function Planner({
     const start = Number(hit.dataset.start);
     const end = Number(hit.dataset.end);
     const id = hit.dataset.gapId;
+    const fits = (hit.dataset.fits ?? "").split(",").filter(Boolean);
     if (!Number.isFinite(dayIndex) || !Number.isFinite(start) || !Number.isFinite(end) || !id) {
       return null;
     }
     if (end - start < duration) return null;
+    if (isNormKind(kind) && !fits.includes(kind)) return null;
     const rect = hit.getBoundingClientRect();
     const available = end - start - duration;
     const ratio = rect.width > 0 ? Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1) : 0;
@@ -492,8 +531,12 @@ export default function Planner({
       if (Math.hypot(e.clientX - o.x, e.clientY - o.y) < DRAG_THRESHOLD) return;
       movedRef.current = true;
     }
+    const dragKind =
+      drag.mode === "resize" ? null : drag.kind;
     const agendaHit =
-      drag.mode !== "resize" ? findAgendaGap(e.clientX, e.clientY, drag.duration) : null;
+      drag.mode !== "resize"
+        ? findAgendaGap(e.clientX, e.clientY, drag.duration, dragKind)
+        : null;
     const hit = agendaHit ? null : findColumn(e.clientX, e.clientY);
     if (!agendaHit && !hit) {
       if (agendaDropRef.current) {
@@ -565,6 +608,16 @@ export default function Planner({
           setError("Женя, это выходной, давай оставим его свободным");
           return;
         }
+        const message = placementMessage({
+          dayKey,
+          start: prev.start,
+          duration: prev.duration,
+          kind: drag.kind,
+        });
+        if (message) {
+          setError(message);
+          return;
+        }
         const created = await api.createBlock({
           title: drag.title,
           color: drag.color,
@@ -594,6 +647,17 @@ export default function Planner({
           return { ...b, blocks };
         });
       } else if (drag.mode === "move") {
+        const message = placementMessage({
+          dayKey,
+          start: prev.start,
+          duration: prev.duration,
+          kind: drag.kind,
+          excludeId: drag.id,
+        });
+        if (message) {
+          setError(message);
+          return;
+        }
         playSnap();
         flashPlaced(drag.id);
         setBundle((b) => ({
@@ -604,6 +668,19 @@ export default function Planner({
         }));
         await api.updateBlock(drag.id, { date: dayKey, start: prev.start });
       } else if (drag.mode === "resize") {
+        const current = bundle.blocks.find((block) => block.id === drag.id);
+        if (!current) return;
+        const message = placementMessage({
+          dayKey: current.date,
+          start: current.start,
+          duration: prev.duration,
+          kind: current.kind,
+          excludeId: drag.id,
+        });
+        if (message) {
+          setError(message);
+          return;
+        }
         setBundle((b) => ({
           ...b,
           blocks: b.blocks.map((x) =>
@@ -616,7 +693,7 @@ export default function Planner({
       setError((e as Error).message);
       refresh();
     }
-  }, [bundle.days, dayOffSet, flashInfo, flashPlaced, onPointerMove, refresh]);
+  }, [bundle.blocks, bundle.days, dayOffSet, flashInfo, flashPlaced, onPointerMove, placementMessage, refresh]);
 
   useEffect(() => {
     pointerUpRef.current = onPointerUp;
@@ -657,6 +734,7 @@ export default function Planner({
       duration: block.duration,
       title: block.title,
       color: block.color,
+      kind: block.kind,
     }, e);
   };
 
@@ -724,7 +802,7 @@ export default function Planner({
       if (start + duration <= b.start) break;
       if (b.start + b.duration > start) start = b.start + b.duration;
     }
-    return Math.min(start, DAY_END_MIN - duration);
+    return start + duration <= DAY_END_MIN ? start : null;
   };
 
   const addStandardBlock = async (dayKey: string, t: TemplateDTO) => {
@@ -733,12 +811,27 @@ export default function Planner({
       setError("Женя, это выходной, давай оставим его свободным");
       return;
     }
+    const start = firstFreeStart(dayKey, t.duration);
+    if (start === null) {
+      setError("Женя, в этом дне уже нет подходящего свободного окошка");
+      return;
+    }
+    const message = placementMessage({
+      dayKey,
+      start,
+      duration: t.duration,
+      kind: t.kind,
+    });
+    if (message) {
+      setError(message);
+      return;
+    }
     try {
       const created = await api.createBlock({
         title: t.name,
         color: t.color,
         date: dayKey,
-        start: firstFreeStart(dayKey, t.duration),
+        start,
         duration: t.duration,
         kind: t.kind,
         templateId: t.id,
@@ -751,9 +844,14 @@ export default function Planner({
 
   const addCustomToDay = (dayKey: string) => {
     setAddSheetDay(null);
+    const start = firstFreeStart(dayKey, 60);
+    if (start === null) {
+      setError("Женя, в этом дне уже нет подходящего свободного окошка");
+      return;
+    }
     setEditing({
       mode: "create",
-      draft: { title: "", color: "rose", date: dayKey, start: firstFreeStart(dayKey, 60), duration: 60 },
+      draft: { title: "", color: "rose", date: dayKey, start, duration: 60 },
     });
   };
 
@@ -783,6 +881,19 @@ export default function Planner({
   const saveBlock = async (d: BlockDraft) => {
     try {
       if (d.id) {
+        const current = bundle.blocks.find((block) => block.id === d.id);
+        const dayKey = current?.date ?? d.date;
+        const message = placementMessage({
+          dayKey,
+          start: d.start,
+          duration: d.duration,
+          kind: current?.kind ?? null,
+          excludeId: d.id,
+        });
+        if (message) {
+          setError(message);
+          return;
+        }
         const updated = await api.updateBlock(d.id, {
           title: d.title,
           color: d.color,
@@ -794,6 +905,16 @@ export default function Planner({
           blocks: b.blocks.map((x) => (x.id === d.id ? updated : x)),
         }));
       } else {
+        const message = placementMessage({
+          dayKey: d.date,
+          start: d.start,
+          duration: d.duration,
+          kind: null,
+        });
+        if (message) {
+          setError(message);
+          return;
+        }
         const created = await api.createBlock({
           title: d.title,
           color: d.color,
@@ -1285,6 +1406,7 @@ export default function Planner({
                       data-day-index={i}
                       data-start={gap.start}
                       data-end={gap.end}
+                      data-fits={gap.fits.join(",")}
                       onClick={() => setAddSheetDay(dayKey)}
                     >
                       <span className="agenda-gap-time">
@@ -1348,6 +1470,7 @@ export default function Planner({
                             data-day-index={i}
                             data-start={gap.start}
                             data-end={gap.end}
+                            data-fits={gap.fits.join(",")}
                             onClick={() => setAddSheetDay(dayKey)}
                           >
                             <span className="agenda-gap-time">
@@ -1379,6 +1502,7 @@ export default function Planner({
                         data-day-index={i}
                         data-start={gap.start}
                         data-end={gap.end}
+                        data-fits={gap.fits.join(",")}
                         onClick={() => setAddSheetDay(dayKey)}
                       >
                         <span className="agenda-gap-time">
@@ -1589,7 +1713,8 @@ export default function Planner({
         <div
           className={`drag-follower block-${dragOverlay.color}`}
           style={{
-            transform: `translate3d(${dragOverlay.x + 14}px, ${dragOverlay.y + 14}px, 0)`,
+            left: `clamp(10px, ${dragOverlay.x + 14}px, calc(100vw - 158px))`,
+            top: `clamp(10px, ${dragOverlay.y + 14}px, calc(100vh - 64px))`,
           }}
         >
           <div className="drag-follower-title">{dragOverlay.title}</div>

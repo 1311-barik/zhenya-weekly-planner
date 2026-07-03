@@ -8,9 +8,9 @@ import {
   DAY_START_MIN,
   DAY_END_MIN,
   MIN_BLOCK_MINUTES,
-  NORM_TYPES,
   SLOT_MINUTES,
 } from "@/lib/config";
+import { findOverlap, findSameNorm, isNormKind } from "@/lib/blockRules";
 
 function snap(min: number): number {
   return Math.round(min / SLOT_MINUTES) * SLOT_MINUTES;
@@ -42,10 +42,20 @@ export async function POST(req: NextRequest) {
     Math.max(snap(start), DAY_START_MIN),
     DAY_END_MIN - MIN_BLOCK_MINUTES
   );
-  const snappedDur = Math.max(
-    snap(duration),
-    MIN_BLOCK_MINUTES
-  );
+  const snappedDur = Math.max(snap(duration), MIN_BLOCK_MINUTES);
+  const nextDuration = Math.min(snappedDur, DAY_END_MIN - snappedStart);
+  const nextKind = isNormKind(kind) ? kind : null;
+  const sameDayBlocks = await prisma.block.findMany({
+    where: { date: fromDateKey(date) },
+    select: { id: true, start: true, duration: true, kind: true },
+  });
+
+  if (findOverlap(sameDayBlocks, snappedStart, nextDuration)) {
+    return badRequest("Женя, блоки не могут пересекаться по времени");
+  }
+  if (findSameNorm(sameDayBlocks, nextKind)) {
+    return badRequest("Женя, в этот день такой любимый блок уже стоит");
+  }
 
   const block = await prisma.block.create({
     data: {
@@ -53,8 +63,8 @@ export async function POST(req: NextRequest) {
       color,
       date: fromDateKey(date),
       start: snappedStart,
-      duration: Math.min(snappedDur, DAY_END_MIN - snappedStart),
-      kind: NORM_TYPES.includes(kind) ? kind : null,
+      duration: nextDuration,
+      kind: nextKind,
       templateId: typeof templateId === "string" ? templateId : null,
     },
   });

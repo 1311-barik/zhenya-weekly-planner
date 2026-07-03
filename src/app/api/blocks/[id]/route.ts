@@ -8,9 +8,9 @@ import {
   DAY_START_MIN,
   DAY_END_MIN,
   MIN_BLOCK_MINUTES,
-  NORM_TYPES,
   SLOT_MINUTES,
 } from "@/lib/config";
+import { findOverlap, findSameNorm, isNormKind } from "@/lib/blockRules";
 
 function snap(min: number): number {
   return Math.round(min / SLOT_MINUTES) * SLOT_MINUTES;
@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (typeof body.title === "string" && body.title.trim()) data.title = body.title.trim();
   if (COLOR_KEYS.includes(body.color)) data.color = body.color;
   if (typeof body.done === "boolean") data.done = body.done;
-  if (body.kind === null || NORM_TYPES.includes(body.kind)) data.kind = body.kind ?? null;
+  if (body.kind === null || isNormKind(body.kind)) data.kind = body.kind ?? null;
   if (typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date))
     data.date = fromDateKey(body.date);
 
@@ -51,6 +51,26 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
 
   if (Object.keys(data).length === 0) return badRequest("Нет полей для обновления");
+
+  const nextDate = (data.date as Date | undefined) ?? existing.date;
+  const nextDuration = (data.duration as number | undefined) ?? existing.duration;
+  const nextKind = (data.kind as string | null | undefined) ?? existing.kind;
+
+  const dayState = await prisma.dayState.findUnique({ where: { date: nextDate } });
+  if (dayState?.dayOff) {
+    return badRequest("Это выходной день, давай оставим его свободным");
+  }
+
+  const sameDayBlocks = await prisma.block.findMany({
+    where: { date: nextDate },
+    select: { id: true, start: true, duration: true, kind: true },
+  });
+  if (findOverlap(sameDayBlocks, nextStart, nextDuration, id)) {
+    return badRequest("Женя, блоки не могут пересекаться по времени");
+  }
+  if (findSameNorm(sameDayBlocks, nextKind, id)) {
+    return badRequest("Женя, в этот день такой любимый блок уже стоит");
+  }
 
   const block = await prisma.block.update({ where: { id }, data });
   return json(serializeBlock(block));
