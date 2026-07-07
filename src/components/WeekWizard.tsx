@@ -3,14 +3,14 @@
 import { useMemo, useState } from "react";
 import type { WeekBundle } from "@/lib/types";
 import { WEEKDAYS_SHORT } from "@/lib/config";
-import { formatDuration, formatTime } from "@/lib/client";
-import { fromDateKey } from "@/lib/week";
+import { formatDuration, formatTime, parseTime } from "@/lib/client";
+import { fromDateKey, startOfWeek, formatWeekTitle } from "@/lib/week";
 
 interface Props {
   bundle: WeekBundle;
   onRemoveBlocks: (ids: string[]) => Promise<void>;
-  onAddTask: (title: string) => Promise<void>;
-  onRemoveTask: (id: string) => Promise<void>;
+  onPlaceOneoff: (title: string, dayKey: string, start?: number) => Promise<void>;
+  onDeleteBlock: (id: string) => Promise<void>;
   onFinish: () => void;
   onClose: () => void;
 }
@@ -18,21 +18,33 @@ interface Props {
 export default function WeekWizard({
   bundle,
   onRemoveBlocks,
-  onAddTask,
-  onRemoveTask,
+  onPlaceOneoff,
+  onDeleteBlock,
   onFinish,
   onClose,
 }: Props) {
   const [step, setStep] = useState(1);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
-  const [taskInput, setTaskInput] = useState("");
+  const [name, setName] = useState("");
+  const [day, setDay] = useState<string>(bundle.days[0]);
+  const [time, setTime] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Постоянные события с флагом recurring.
+  const weekTitle = formatWeekTitle(startOfWeek(fromDateKey(bundle.weekStart)));
+
   const recurringBlocks = useMemo(
     () =>
       bundle.blocks
         .filter((b) => b.recurring)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start),
+    [bundle.blocks]
+  );
+
+  // Разовые дела, уже стоящие в сетке (не повтор, не из библиотеки, не норма).
+  const oneoffBlocks = useMemo(
+    () =>
+      bundle.blocks
+        .filter((b) => !b.recurring && !b.templateId && !b.kind)
         .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start),
     [bundle.blocks]
   );
@@ -52,7 +64,6 @@ export default function WeekWizard({
   async function next() {
     if (busy) return;
     if (step === 1) {
-      // применяем удаление снятых постоянных событий
       if (removed.size > 0) {
         setBusy(true);
         await onRemoveBlocks([...removed]);
@@ -65,19 +76,26 @@ export default function WeekWizard({
     }
   }
 
-  async function addTask() {
-    const t = taskInput.trim();
+  async function addOneoff() {
+    const t = name.trim();
     if (!t || busy) return;
     setBusy(true);
-    await onAddTask(t);
-    setTaskInput("");
+    const start = time ? parseTime(time) ?? undefined : undefined;
+    await onPlaceOneoff(t, day, start);
+    setName("");
+    setTime("");
     setBusy(false);
   }
 
   return (
     <div className="popup-overlay" onClick={onClose}>
       <div className="popup wizard" onClick={(e) => e.stopPropagation()}>
-        <div className="popup-title serif">Женя, соберём неделю</div>
+        <div className="popup-title serif" style={{ marginBottom: 2 }}>
+          Женя, соберём неделю
+        </div>
+        <div style={{ fontSize: 12, color: "var(--mid-gray)", marginBottom: 16 }}>
+          {weekTitle}
+        </div>
 
         <div className="wizard-steps">
           {[1, 2].map((s) => (
@@ -131,32 +149,61 @@ export default function WeekWizard({
             <div className="wizard-step-label">Шаг 2 из 2 · Разовые дела</div>
             <p className="wizard-intro">
               Женя, что уже известно про эту неделю? Врач, маникюр, встречи, поездки…
-              Можно добавить сюда, а потом мягко перенести в нужный день.
+              Выбери день (и время, если есть) — дело сразу встанет в сетку.
             </p>
-            <div className="wizard-add-row">
-              <input
-                className="form-input"
-                placeholder="Например, врач во вторник"
-                value={taskInput}
-                onChange={(e) => setTaskInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addTask()}
-              />
-              <button className="btn-primary" onClick={addTask}>
-                +
-              </button>
-            </div>
-            <div className="wizard-body">
-              {bundle.tasks.length === 0 && (
-                <p className="wizard-row-sub">Пока здесь пусто, можно спокойно пропустить.</p>
-              )}
-              {bundle.tasks.map((t) => (
-                <div key={t.id} className="wizard-row">
-                  <div className="wizard-row-main">{t.title}</div>
-                  <button className="wizard-row-btn" onClick={() => onRemoveTask(t.id)}>
-                    Удалить
-                  </button>
+
+            <input
+              className="form-input"
+              placeholder="Например, врач"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addOneoff()}
+            />
+            <div className="wizard-dayoff-grid" style={{ marginBottom: 10 }}>
+              {bundle.days.map((dayKey, i) => (
+                <div
+                  key={dayKey}
+                  className={`wizard-day${day === dayKey ? " selected" : ""}`}
+                  onClick={() => setDay(dayKey)}
+                >
+                  <div className="wizard-day-name">{WEEKDAYS_SHORT[i]}</div>
+                  <div className="wizard-day-num">{fromDateKey(dayKey).getUTCDate()}</div>
                 </div>
               ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <input
+                className="form-input"
+                style={{ margin: 0, flex: 1 }}
+                type="time"
+                step={900}
+                value={time}
+                placeholder="время (не обязательно)"
+                onChange={(e) => setTime(e.target.value)}
+              />
+              <button className="btn-primary" onClick={addOneoff} disabled={busy}>
+                Добавить в день
+              </button>
+            </div>
+
+            <div className="wizard-body">
+              {oneoffBlocks.length === 0 ? (
+                <p className="wizard-row-sub">Пока пусто — добавь дела выше, и они появятся в сетке.</p>
+              ) : (
+                oneoffBlocks.map((b) => (
+                  <div key={b.id} className="wizard-row">
+                    <div className="wizard-row-main">
+                      {b.title}
+                      <div className="wizard-row-sub">
+                        {dayShort(b.date)} {fromDateKey(b.date).getUTCDate()} · {formatTime(b.start)}
+                      </div>
+                    </div>
+                    <button className="wizard-row-btn" onClick={() => onDeleteBlock(b.id)}>
+                      Удалить
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </>
         )}
@@ -173,7 +220,7 @@ export default function WeekWizard({
             </button>
           )}
           <button className="btn-primary" onClick={next} disabled={busy}>
-            {step === 1 ? "Дальше" : "Готово → расставить мягко"}
+            {step === 1 ? "Дальше" : "Готово"}
           </button>
         </div>
       </div>

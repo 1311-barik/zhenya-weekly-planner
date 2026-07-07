@@ -1014,10 +1014,27 @@ export default function Planner({
   };
 
   // ── колбэки мастера «Собрать неделю» ──
-  const wizardAddTask = async (title: string) => {
+  // Разовое дело из мастера: сразу ставим блок в выбранный день.
+  const wizardPlaceOneoff = async (title: string, dayKey: string, start?: number) => {
+    if (dayOffSet.has(dayKey)) {
+      setError("Это выходной день — давай оставим его свободным");
+      return;
+    }
+    const duration = 60;
+    const s = start ?? firstFreeStart(dayKey, duration);
+    if (s == null) {
+      setError("В этот день уже плотно — не нашлось свободного часа");
+      return;
+    }
     try {
-      const t = await api.createTask({ title });
-      setBundle((b) => ({ ...b, tasks: [...b.tasks, t] }));
+      const created = await api.createBlock({
+        title,
+        color: "rose",
+        date: dayKey,
+        start: s,
+        duration,
+      });
+      setBundle((b) => ({ ...b, blocks: [...b.blocks, created] }));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -1795,8 +1812,8 @@ export default function Planner({
         <WeekWizard
           bundle={bundle}
           onRemoveBlocks={wizardRemoveBlocks}
-          onAddTask={wizardAddTask}
-          onRemoveTask={deleteTask}
+          onPlaceOneoff={wizardPlaceOneoff}
+          onDeleteBlock={deleteBlock}
           onFinish={finishWizard}
           onClose={() => setWizardOpen(false)}
         />
