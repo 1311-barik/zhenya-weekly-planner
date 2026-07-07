@@ -42,23 +42,23 @@ export function parseOneoff(text: string): ParsedOneoff {
 
   // 2) время: 10:00 / 10.00 / 15 ч
   let start: number | null = null;
-  const colon = text.match(/\b(\d{1,2})[:.](\d{2})\b/);
+  const colon = text.match(/(^|[^\d])(\d{1,2})[:.](\d{2})(?=[^\d]|$)/);
   if (colon) {
-    const h = Number(colon[1]);
-    const m = Number(colon[2]);
+    const h = Number(colon[2]);
+    const m = Number(colon[3]);
     if (h < 24 && m < 60) start = h * 60 + m;
   } else {
-    const hourOnly = text.match(/\b(\d{1,2})\s*ч\b/i);
+    const hourOnly = text.match(/(^|[^\d])(\d{1,2})\s*ч\.?(?=[^\p{L}\d]|$)/iu);
     if (hourOnly) {
-      const h = Number(hourOnly[1]);
+      const h = Number(hourOnly[2]);
       if (h < 24) start = h * 60;
     }
   }
 
   // 3) очистка названия
   let title = text;
-  title = title.replace(/\b\d{1,2}[:.]\d{2}\b/g, " ");
-  title = title.replace(/\b\d{1,2}\s*ч\.?/gi, " ");
+  title = title.replace(/(^|[^\d])\d{1,2}[:.]\d{2}(?=[^\d]|$)/g, "$1 ");
+  title = title.replace(/(^|[^\d])\d{1,2}\s*ч\.?(?=[^\p{L}\d]|$)/giu, "$1 ");
   for (const re of DAY_WORDS) title = title.replace(new RegExp(re.source, "gi"), " ");
   // короткие формы как отдельные токены
   title = title.replace(/(^|[^а-яё])(пн|вт|ср|чт|пт|сб|вс)(?=[^а-яё]|$)/gi, "$1 ");

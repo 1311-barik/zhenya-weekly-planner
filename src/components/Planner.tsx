@@ -1029,6 +1029,7 @@ export default function Planner({
   // ставим блоки в сетку одним нажатием. Что не разобрали — вернём.
   const wizardPlaceAll = async (): Promise<{ placed: number; unparsed: string[] }> => {
     const working = bundle.blocks.map((b) => ({
+      id: b.id,
       date: b.date,
       start: b.start,
       duration: b.duration,
@@ -1044,6 +1045,13 @@ export default function Planner({
       }
       return s + duration <= DAY_END_MIN ? s : null;
     };
+    const isFree = (dayKey: string, start: number, duration: number) =>
+      !working.some(
+        (b) =>
+          b.date === dayKey &&
+          start < b.start + b.duration &&
+          start + duration > b.start
+      );
 
     const newBlocks: BlockDTO[] = [];
     const placedTaskIds: string[] = [];
@@ -1061,6 +1069,14 @@ export default function Planner({
         unparsed.push(`${task.title} (выходной)`);
         continue;
       }
+      if (p.start !== null && (p.start < DAY_START_MIN || p.start + duration > DAY_END_MIN)) {
+        unparsed.push(`${task.title} (время вне дня)`);
+        continue;
+      }
+      if (p.start !== null && !isFree(dayKey, p.start, duration)) {
+        unparsed.push(`${task.title} (это время уже занято)`);
+        continue;
+      }
       const start = p.start ?? freeStart(dayKey, duration);
       if (start == null) {
         unparsed.push(`${task.title} (день занят)`);
@@ -1076,10 +1092,10 @@ export default function Planner({
         });
         newBlocks.push(created);
         placedTaskIds.push(task.id);
-        working.push({ date: dayKey, start, duration });
+        working.push({ id: created.id, date: dayKey, start, duration });
         api.deleteTask(task.id).catch(() => {});
-      } catch {
-        unparsed.push(task.title);
+      } catch (e) {
+        unparsed.push(`${task.title} (${(e as Error).message})`);
       }
     }
 
