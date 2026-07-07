@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { COLORS, COLOR_KEYS, type ColorKey } from "@/lib/config";
+import { COLORS, COLOR_KEYS, WEEKDAYS_SHORT, type ColorKey } from "@/lib/config";
 import { formatTime, parseTime } from "@/lib/client";
+import { fromDateKey } from "@/lib/week";
 
 export interface BlockDraft {
   id?: string;
@@ -33,23 +34,33 @@ export default function EditBlockPopup({
   onSave,
   onDelete,
   onClose,
+  weekDays,
 }: {
   mode: "create" | "edit";
   draft: BlockDraft;
   onSave: (d: BlockDraft) => void;
   onDelete?: () => void;
   onClose: () => void;
+  weekDays?: string[];
 }) {
   const [title, setTitle] = useState(draft.title);
   const [color, setColor] = useState<ColorKey>(draft.color);
+  const [date, setDate] = useState(draft.date);
   const [timeStr, setTimeStr] = useState(formatTime(draft.start));
   const [duration, setDuration] = useState(draft.duration);
+  const dateOptions = weekDays?.length ? weekDays : [draft.date];
+
+  const formatDayOption = (dateKey: string) => {
+    const idx = dateOptions.indexOf(dateKey);
+    const d = fromDateKey(dateKey);
+    return `${idx >= 0 ? WEEKDAYS_SHORT[idx] : ""} ${d.getUTCDate()}`.trim();
+  };
 
   function save() {
     const start = parseTime(timeStr);
     if (!title.trim()) return;
     if (start === null) return;
-    onSave({ ...draft, title: title.trim(), color, start, duration });
+    onSave({ ...draft, title: title.trim(), color, date, start, duration });
   }
 
   return (
@@ -69,6 +80,19 @@ export default function EditBlockPopup({
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && save()}
         />
+
+        <label className="form-label">День</label>
+        <select
+          className="form-input"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        >
+          {dateOptions.map((dateKey) => (
+            <option key={dateKey} value={dateKey}>
+              {formatDayOption(dateKey)}
+            </option>
+          ))}
+        </select>
 
         <div className="form-row">
           <div>

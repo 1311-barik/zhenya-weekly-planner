@@ -742,7 +742,9 @@ export default function Planner({
     const target = e.target as HTMLElement;
     if (target.closest(".resize-handle")) return;
     e.preventDefault();
-    const blockRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    e.stopPropagation();
+    const blockEl = target.closest(".task-block, .agenda-block") as HTMLElement | null;
+    const blockRect = (blockEl ?? (e.currentTarget as HTMLElement)).getBoundingClientRect();
     startDrag({
       mode: "move",
       id: block.id,
@@ -898,9 +900,8 @@ export default function Planner({
     try {
       if (d.id) {
         const current = bundle.blocks.find((block) => block.id === d.id);
-        const dayKey = current?.date ?? d.date;
         const message = placementMessage({
-          dayKey,
+          dayKey: d.date,
           start: d.start,
           duration: d.duration,
           kind: current?.kind ?? null,
@@ -913,6 +914,7 @@ export default function Planner({
         const updated = await api.updateBlock(d.id, {
           title: d.title,
           color: d.color,
+          date: d.date,
           start: d.start,
           duration: d.duration,
         });
@@ -1180,7 +1182,6 @@ export default function Planner({
           width: dragging ? "auto" : `calc(${lay.width}% - 6px)`,
           right: dragging ? "3px" : "auto",
         }}
-        onPointerDown={(e) => onBlockPointerDown(e, block)}
         onClick={(e) => {
           e.stopPropagation();
           if (suppressClick.current) {
@@ -1204,6 +1205,15 @@ export default function Planner({
         <div className="task-block-time">
           {formatTime(start)} · {formatDuration(duration)}
         </div>
+        <button
+          className="block-move-handle"
+          title="Перенести блок"
+          aria-label="Перенести блок"
+          onPointerDown={(e) => onBlockPointerDown(e, block)}
+          onClick={(e) => e.stopPropagation()}
+        >
+          ↕
+        </button>
         <div className="resize-handle" onPointerDown={(e) => onResizePointerDown(e, block)} />
       </div>
     );
@@ -1531,7 +1541,6 @@ export default function Planner({
                       <div key={b.id} className="agenda-item-group">
                         <div
                           className="agenda-block"
-                          onPointerDown={(e) => onBlockPointerDown(e, b)}
                           onClick={() =>
                             setEditing({
                               mode: "edit",
@@ -1557,6 +1566,15 @@ export default function Planner({
                               {formatTime(b.start + b.duration)}
                             </div>
                           </div>
+                          <button
+                            className="agenda-move-handle"
+                            title="Перенести блок"
+                            aria-label="Перенести блок"
+                            onPointerDown={(e) => onBlockPointerDown(e, b)}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            ↕
+                          </button>
                         </div>
 
                         {afterGaps.map((gap) => (
@@ -1864,6 +1882,7 @@ export default function Planner({
           onSave={saveBlock}
           onDelete={editing.draft.id ? () => deleteBlock(editing.draft.id!) : undefined}
           onClose={() => setEditing(null)}
+          weekDays={bundle.days}
         />
       )}
 
