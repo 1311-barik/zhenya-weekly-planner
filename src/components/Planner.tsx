@@ -22,6 +22,7 @@ import {
   toDateKey,
   formatWeekTitle,
 } from "@/lib/week";
+import { parseOneoff } from "@/lib/parseOneoff";
 import {
   api,
   computeNorms,
@@ -1014,30 +1015,80 @@ export default function Planner({
   };
 
   // ── колбэки мастера «Собрать неделю» ──
-  // Разовое дело из мастера: сразу ставим блок в выбранный день.
-  const wizardPlaceOneoff = async (title: string, dayKey: string, start?: number) => {
-    if (dayOffSet.has(dayKey)) {
-      setError("Это выходной день — давай оставим его свободным");
-      return;
-    }
-    const duration = 60;
-    const s = start ?? firstFreeStart(dayKey, duration);
-    if (s == null) {
-      setError("В этот день уже плотно — не нашлось свободного часа");
-      return;
-    }
+  // Добавить разовое дело в список (inbox).
+  const wizardAddTask = async (title: string) => {
     try {
-      const created = await api.createBlock({
-        title,
-        color: "rose",
-        date: dayKey,
-        start: s,
-        duration,
-      });
-      setBundle((b) => ({ ...b, blocks: [...b.blocks, created] }));
+      const t = await api.createTask({ title });
+      setBundle((b) => ({ ...b, tasks: [...b.tasks, t] }));
     } catch (e) {
       setError((e as Error).message);
     }
+  };
+
+  // «Расставить всё»: читаем день/время из текста каждого дела списка,
+  // ставим блоки в сетку одним нажатием. Что не разобрали — вернём.
+  const wizardPlaceAll = async (): Promise<{ placed: number; unparsed: string[] }> => {
+    const working = bundle.blocks.map((b) => ({
+      date: b.date,
+      start: b.start,
+      duration: b.duration,
+    }));
+    const freeStart = (dayKey: string, duration: number): number | null => {
+      const dayB = working
+        .filter((b) => b.date === dayKey)
+        .sort((a, b) => a.start - b.start);
+      let s = 9 * 60;
+      for (const b of dayB) {
+        if (s + duration <= b.start) break;
+        if (b.start + b.duration > s) s = b.start + b.duration;
+      }
+      return s + duration <= DAY_END_MIN ? s : null;
+    };
+
+    const newBlocks: BlockDTO[] = [];
+    const placedTaskIds: string[] = [];
+    const unparsed: string[] = [];
+    const duration = 60;
+
+    for (const task of bundle.tasks) {
+      const p = parseOneoff(task.title);
+      if (p.dayIndex === null) {
+        unparsed.push(task.title);
+        continue;
+      }
+      const dayKey = bundle.days[p.dayIndex];
+      if (dayOffSet.has(dayKey)) {
+        unparsed.push(`${task.title} (выходной)`);
+        continue;
+      }
+      const start = p.start ?? freeStart(dayKey, duration);
+      if (start == null) {
+        unparsed.push(`${task.title} (день занят)`);
+        continue;
+      }
+      try {
+        const created = await api.createBlock({
+          title: p.title,
+          color: "rose",
+          date: dayKey,
+          start,
+          duration,
+        });
+        newBlocks.push(created);
+        placedTaskIds.push(task.id);
+        working.push({ date: dayKey, start, duration });
+        api.deleteTask(task.id).catch(() => {});
+      } catch {
+        unparsed.push(task.title);
+      }
+    }
+
+    setBundle((b) => ({
+      ...b,
+      blocks: [...b.blocks, ...newBlocks],
+      tasks: b.tasks.filter((t) => !placedTaskIds.includes(t.id)),
+    }));
+    return { placed: newBlocks.length, unparsed };
   };
 
   const wizardRemoveBlocks = async (ids: string[]) => {
@@ -1812,8 +1863,9 @@ export default function Planner({
         <WeekWizard
           bundle={bundle}
           onRemoveBlocks={wizardRemoveBlocks}
-          onPlaceOneoff={wizardPlaceOneoff}
-          onDeleteBlock={deleteBlock}
+          onAddTask={wizardAddTask}
+          onRemoveTask={deleteTask}
+          onPlaceAll={wizardPlaceAll}
           onFinish={finishWizard}
           onClose={() => setWizardOpen(false)}
         />
