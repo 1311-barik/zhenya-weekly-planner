@@ -21,12 +21,17 @@ export default function AwayPopup({
   onClose: () => void;
 }) {
   const [start, setStart] = useState(defaultStart);
-  const [days, setDays] = useState(7);
+  const [daysInput, setDaysInput] = useState("");
   const [error, setError] = useState("");
+  const days = Number(daysInput);
+  const validDays = Number.isInteger(days) && days >= 1 && days <= 90;
+  const previewDays = validDays ? days : null;
 
   // Дата возвращения = старт + (дней − 1); «вернулась» на следующий день.
-  const endDate = start ? toDateKey(addDays(fromDateKey(start), Math.max(days, 1) - 1)) : "";
-  const backDate = start ? toDateKey(addDays(fromDateKey(start), Math.max(days, 1))) : "";
+  const endDate =
+    start && previewDays ? toDateKey(addDays(fromDateKey(start), previewDays - 1)) : "";
+  const backDate =
+    start && previewDays ? toDateKey(addDays(fromDateKey(start), previewDays)) : "";
 
   const human = (key: string) => {
     if (!key) return "";
@@ -36,7 +41,7 @@ export default function AwayPopup({
 
   function confirm() {
     if (!start) return setError("Женя, пожалуйста, укажи дату отъезда");
-    if (days < 1) return setError("Пожалуйста, выбери хотя бы один день");
+    if (!validDays) return setError("Пожалуйста, укажи от 1 до 90 дней");
     onConfirm(start, endDate);
   }
 
@@ -63,9 +68,12 @@ export default function AwayPopup({
             <button
               key={p}
               type="button"
-              className={`btn-ghost${days === p ? " active" : ""}`}
+              className={`btn-ghost${validDays && days === p ? " active" : ""}`}
               style={{ padding: "5px 12px" }}
-              onClick={() => setDays(p)}
+              onClick={() => {
+                setDaysInput(String(p));
+                setError("");
+              }}
             >
               {p}
             </button>
@@ -73,14 +81,18 @@ export default function AwayPopup({
         </div>
         <input
           className="form-input"
-          type="number"
-          min={1}
-          max={90}
-          value={days}
-          onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 1))}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Например, 7"
+          value={daysInput}
+          onChange={(e) => {
+            setDaysInput(e.target.value.replace(/\D/g, "").slice(0, 2));
+            setError("");
+          }}
         />
 
-        {start && (
+        {start && previewDays && (
           <div
             style={{
               fontSize: 13,
