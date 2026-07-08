@@ -1158,6 +1158,53 @@ body::before {
   text-align: center;
 }
 
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 230;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 520px);
+  padding: 9px 10px 9px 16px;
+  border: 1px solid rgba(62, 55, 48, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.96);
+  box-shadow: 0 10px 28px rgba(62, 55, 48, 0.16);
+  color: var(--charcoal);
+  font-size: 13px;
+  animation: tray-in 0.22s ease;
+}
+.undo-toast span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.undo-toast button {
+  border: 0;
+  background: transparent;
+  color: var(--terracotta);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.undo-toast .undo-toast-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--mid-gray);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+}
+.undo-toast .undo-toast-close:hover {
+  background: var(--parchment);
+}
+
 /* ───────── Мастер «Собрать неделю» ───────── */
 .wizard {
   width: 460px;

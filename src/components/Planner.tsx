@@ -145,6 +145,11 @@ interface AgendaGap {
   variant: "empty-day" | "between";
 }
 
+interface UndoNotice {
+  message: string;
+  action: () => Promise<void>;
+}
+
 export default function Planner({
   initial,
   today,
@@ -181,6 +186,7 @@ export default function Planner({
   const [dayOffPromptChoice, setDayOffPromptChoice] = useState<string | null>(null);
   const [agendaDropId, setAgendaDropId] = useState<string | null>(null);
   const [dragOverlay, setDragOverlay] = useState<DragOverlay | null>(null);
+  const [undoStack, setUndoStack] = useState<UndoNotice[]>([]);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -263,6 +269,23 @@ export default function Planner({
     setJustPlacedId(id);
     window.setTimeout(() => setJustPlacedId((cur) => (cur === id ? null : cur)), 360);
   }, []);
+
+  const offerUndo = useCallback((message: string, action: () => Promise<void>) => {
+    setUndoStack((stack) => [...stack.slice(-7), { message, action }]);
+  }, []);
+
+  const runUndo = useCallback(async () => {
+    const notice = undoStack.at(-1);
+    if (!notice) return;
+    setUndoStack((stack) => stack.slice(0, -1));
+    try {
+      await notice.action();
+      flashInfo("Вернула");
+    } catch (e) {
+      setError((e as Error).message);
+      refresh();
+    }
+  }, [flashInfo, refresh, undoStack]);
 
   const dayOffSet = useMemo(() => new Set(bundle.dayOff), [bundle.dayOff]);
   const blocksByDay = useMemo(() => {
@@ -474,6 +497,53 @@ export default function Planner({
     return { dayIndex, start: placedStart, end, id };
   };
 
+  const findSwapTarget = useCallback(
+    (moving: BlockDTO, dayKey: string, start: number) => {
+      const nextEnd = start + moving.duration;
+      const target = (blocksByDay[dayKey] ?? []).find(
+        (block) =>
+          block.id !== moving.id &&
+          start < block.start + block.duration &&
+          nextEnd > block.start
+      );
+      if (!target) return null;
+
+      const targetNextStart = moving.start;
+      const targetNextEnd = targetNextStart + target.duration;
+      if (targetNextEnd > DAY_END_MIN) return null;
+      if (dayOffSet.has(moving.date)) return null;
+      if (
+        target.date === moving.date &&
+        target.start < targetNextEnd &&
+        target.start + moving.duration > targetNextStart
+      ) {
+        return null;
+      }
+
+      const blocksWithoutPair = bundle.blocks.filter(
+        (block) => block.id !== moving.id && block.id !== target.id
+      );
+      const targetCollides = blocksWithoutPair.some(
+        (block) =>
+          block.date === moving.date &&
+          targetNextStart < block.start + block.duration &&
+          targetNextEnd > block.start
+      );
+      if (targetCollides) return null;
+
+      const movingSameNorm = blocksWithoutPair.some(
+        (block) => block.date === target.date && block.kind === moving.kind && moving.kind
+      );
+      const targetSameNorm = blocksWithoutPair.some(
+        (block) => block.date === moving.date && block.kind === target.kind && target.kind
+      );
+      if (movingSameNorm || targetSameNorm) return null;
+
+      return target;
+    },
+    [blocksByDay, bundle.blocks, dayOffSet]
+  );
+
   // ── обработчики перетаскивания (общие) ──
   const clearDragState = useCallback(() => {
     if (activePointerRef.current) {
@@ -635,7 +705,13 @@ export default function Planner({
           }
           return { ...b, blocks };
         });
+        offerUndo("Блок добавлен", async () => {
+          await api.deleteBlock(created.id);
+          setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => x.id !== created.id) }));
+        });
       } else if (drag.mode === "move") {
+        const moving = bundle.blocks.find((block) => block.id === drag.id);
+        if (!moving) return;
         const message = placementMessage({
           dayKey,
           start: prev.start,
@@ -644,11 +720,38 @@ export default function Planner({
           excludeId: drag.id,
         });
         if (message) {
-          setError(message);
+          const swapTarget = findSwapTarget(moving, dayKey, prev.start);
+          if (!swapTarget) {
+            setError(message);
+            return;
+          }
+          playSnap();
+          flashPlaced(drag.id);
+          setBundle((b) => ({
+            ...b,
+            blocks: b.blocks.map((x) => {
+              if (x.id === drag.id) return { ...x, date: swapTarget.date, start: swapTarget.start };
+              if (x.id === swapTarget.id) return { ...x, date: moving.date, start: moving.start };
+              return x;
+            }),
+          }));
+          const swapped = await api.swapBlocks(drag.id, swapTarget.id);
+          setBundle((b) => ({
+            ...b,
+            blocks: b.blocks.map((x) => swapped.blocks.find((block) => block.id === x.id) ?? x),
+          }));
+          offerUndo("Блоки поменялись местами", async () => {
+            const restored = await api.swapBlocks(drag.id, swapTarget.id);
+            setBundle((b) => ({
+              ...b,
+              blocks: b.blocks.map((x) => restored.blocks.find((block) => block.id === x.id) ?? x),
+            }));
+          });
           return;
         }
         playSnap();
         flashPlaced(drag.id);
+        const before = { date: moving.date, start: moving.start };
         setBundle((b) => ({
           ...b,
           blocks: b.blocks.map((x) =>
@@ -656,6 +759,13 @@ export default function Planner({
           ),
         }));
         await api.updateBlock(drag.id, { date: dayKey, start: prev.start });
+        offerUndo("Блок перенесён", async () => {
+          const restored = await api.updateBlock(drag.id, before);
+          setBundle((b) => ({
+            ...b,
+            blocks: b.blocks.map((x) => (x.id === restored.id ? restored : x)),
+          }));
+        });
       } else if (drag.mode === "resize") {
         const current = bundle.blocks.find((block) => block.id === drag.id);
         if (!current) return;
@@ -677,12 +787,19 @@ export default function Planner({
           ),
         }));
         await api.updateBlock(drag.id, { duration: prev.duration });
+        offerUndo("Длительность изменена", async () => {
+          const restored = await api.updateBlock(drag.id, { duration: current.duration });
+          setBundle((b) => ({
+            ...b,
+            blocks: b.blocks.map((x) => (x.id === restored.id ? restored : x)),
+          }));
+        });
       }
     } catch (e) {
       setError((e as Error).message);
       refresh();
     }
-  }, [bundle.blocks, bundle.days, clearDragState, dayOffSet, flashInfo, flashPlaced, placementMessage, refresh, removeDragListeners]);
+  }, [bundle.blocks, bundle.days, clearDragState, dayOffSet, findSwapTarget, flashInfo, flashPlaced, offerUndo, placementMessage, refresh, removeDragListeners]);
 
   useEffect(() => {
     pointerUpRef.current = onPointerUp;
@@ -855,6 +972,10 @@ export default function Planner({
         templateId: t.id,
       });
       setBundle((b) => ({ ...b, blocks: [...b.blocks, created] }));
+      offerUndo("Блок добавлен", async () => {
+        await api.deleteBlock(created.id);
+        setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => x.id !== created.id) }));
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -900,6 +1021,7 @@ export default function Planner({
     try {
       if (d.id) {
         const current = bundle.blocks.find((block) => block.id === d.id);
+        if (!current) return;
         const message = placementMessage({
           dayKey: d.date,
           start: d.start,
@@ -922,6 +1044,19 @@ export default function Planner({
           ...b,
           blocks: b.blocks.map((x) => (x.id === d.id ? updated : x)),
         }));
+        offerUndo("Блок изменён", async () => {
+          const restored = await api.updateBlock(current.id, {
+            title: current.title,
+            color: current.color,
+            date: current.date,
+            start: current.start,
+            duration: current.duration,
+          });
+          setBundle((b) => ({
+            ...b,
+            blocks: b.blocks.map((x) => (x.id === restored.id ? restored : x)),
+          }));
+        });
       } else {
         const message = placementMessage({
           dayKey: d.date,
@@ -941,6 +1076,10 @@ export default function Planner({
           duration: d.duration,
         });
         setBundle((b) => ({ ...b, blocks: [...b.blocks, created] }));
+        offerUndo("Блок создан", async () => {
+          await api.deleteBlock(created.id);
+          setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => x.id !== created.id) }));
+        });
       }
       setEditing(null);
     } catch (e) {
@@ -949,10 +1088,25 @@ export default function Planner({
   };
 
   const deleteBlock = async (id: string) => {
+    const deleted = bundle.blocks.find((x) => x.id === id);
     setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => x.id !== id) }));
     setEditing(null);
     try {
       await api.deleteBlock(id);
+      if (deleted) {
+        offerUndo("Блок удалён", async () => {
+          const restored = await api.createBlock({
+            title: deleted.title,
+            color: deleted.color,
+            date: deleted.date,
+            start: deleted.start,
+            duration: deleted.duration,
+            kind: deleted.kind,
+            templateId: deleted.templateId,
+          });
+          setBundle((b) => ({ ...b, blocks: [...b.blocks, restored] }));
+        });
+      }
     } catch (e) {
       setError((e as Error).message);
       refresh();
@@ -966,15 +1120,29 @@ export default function Planner({
     try {
       const t = await api.createTask({ title: title.trim() });
       setBundle((b) => ({ ...b, tasks: [...b.tasks, t] }));
+      offerUndo("Задача добавлена", async () => {
+        await api.deleteTask(t.id);
+        setBundle((b) => ({ ...b, tasks: b.tasks.filter((x) => x.id !== t.id) }));
+      });
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
   const deleteTask = async (id: string) => {
+    const deleted = bundle.tasks.find((x) => x.id === id);
     setBundle((b) => ({ ...b, tasks: b.tasks.filter((x) => x.id !== id) }));
     try {
       await api.deleteTask(id);
+      if (deleted) {
+        offerUndo("Задача удалена", async () => {
+          const restored = await api.createTask({
+            title: deleted.title,
+            duration: deleted.duration,
+          });
+          setBundle((b) => ({ ...b, tasks: [...b.tasks, restored] }));
+        });
+      }
     } catch (e) {
       setError((e as Error).message);
       refresh();
@@ -984,12 +1152,27 @@ export default function Planner({
   // ── выходной ──
   const toggleDayOff = async (dayKey: string) => {
     const next = !dayOffSet.has(dayKey);
+    const before = [...bundle.dayOff];
     try {
       await api.dayOff(dayKey, next);
       setBundle((b) => ({
         ...b,
         dayOff: next ? [...b.dayOff, dayKey] : b.dayOff.filter((d) => d !== dayKey),
       }));
+      offerUndo(next ? "Выходной поставлен" : "Выходной снят", async () => {
+        const current = new Set(bundle.days);
+        for (const date of bundle.days) await api.dayOff(date, false);
+        for (const date of before.filter((date) => current.has(date))) {
+          await api.dayOff(date, true);
+        }
+        setBundle((b) => ({
+          ...b,
+          dayOff: [
+            ...b.dayOff.filter((date) => !current.has(date)),
+            ...before.filter((date) => current.has(date)),
+          ],
+        }));
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -998,10 +1181,45 @@ export default function Planner({
   // ── отъезд ──
   const activeAway = bundle.away[0];
   const startAway = async (s: string, en: string) => {
+    const removedBlocks = bundle.blocks.filter((block) => block.date >= s && block.date <= en);
+    const previousDayOff = bundle.dayOff.filter((date) => date >= s && date <= en);
     try {
-      await api.away(s, en);
+      const away = await api.away(s, en);
       setAwayOpen(false);
-      refresh();
+      await refresh();
+      offerUndo("Отъезд поставлен", async () => {
+        await api.returnFromAway(away.id);
+        const restored = await Promise.all(
+          removedBlocks.map((block) =>
+            api.createBlock({
+              title: block.title,
+              color: block.color,
+              date: block.date,
+              start: block.start,
+              duration: block.duration,
+              kind: block.kind,
+              templateId: block.templateId,
+            })
+          )
+        );
+        const rangeDays = bundle.days.filter((date) => date >= s && date <= en);
+        for (const date of rangeDays) await api.dayOff(date, false);
+        for (const date of previousDayOff) await api.dayOff(date, true);
+        setBundle((b) => ({
+          ...b,
+          away: b.away.filter((item) => item.id !== away.id),
+          blocks: [
+            ...b.blocks.filter(
+              (block) => !(block.date >= s && block.date <= en && block.title === "✈️ Отъезд")
+            ),
+            ...restored,
+          ],
+          dayOff: [
+            ...b.dayOff.filter((date) => !(date >= s && date <= en)),
+            ...previousDayOff,
+          ],
+        }));
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -1022,6 +1240,10 @@ export default function Planner({
     try {
       const t = await api.createTask({ title });
       setBundle((b) => ({ ...b, tasks: [...b.tasks, t] }));
+      offerUndo("Дело добавлено", async () => {
+        await api.deleteTask(t.id);
+        setBundle((b) => ({ ...b, tasks: b.tasks.filter((x) => x.id !== t.id) }));
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -1056,6 +1278,7 @@ export default function Planner({
       );
 
     const newBlocks: BlockDTO[] = [];
+    const placedTasks: TaskDTO[] = [];
     const placedTaskIds: string[] = [];
     const unparsed: string[] = [];
     const duration = 60;
@@ -1093,26 +1316,61 @@ export default function Planner({
           duration,
         });
         newBlocks.push(created);
+        placedTasks.push(task);
         placedTaskIds.push(task.id);
         working.push({ id: created.id, date: dayKey, start, duration });
-        api.deleteTask(task.id).catch(() => {});
       } catch (e) {
         unparsed.push(`${task.title} (${(e as Error).message})`);
       }
     }
+    await Promise.all(placedTaskIds.map((id) => api.deleteTask(id).catch(() => null)));
 
     setBundle((b) => ({
       ...b,
       blocks: [...b.blocks, ...newBlocks],
       tasks: b.tasks.filter((t) => !placedTaskIds.includes(t.id)),
     }));
+    if (newBlocks.length > 0) {
+      offerUndo("Разовые дела расставлены", async () => {
+        await Promise.all(newBlocks.map((block) => api.deleteBlock(block.id)));
+        const restoredTasks = await Promise.all(
+          placedTasks.map((task) =>
+            api.createTask({ title: task.title, duration: task.duration })
+          )
+        );
+        setBundle((b) => ({
+          ...b,
+          blocks: b.blocks.filter((block) => !newBlocks.some((created) => created.id === block.id)),
+          tasks: [...b.tasks, ...restoredTasks],
+        }));
+      });
+    }
     return { placed: newBlocks.length, unparsed };
   };
 
   const wizardRemoveBlocks = async (ids: string[]) => {
+    const removed = bundle.blocks.filter((x) => ids.includes(x.id));
     setBundle((b) => ({ ...b, blocks: b.blocks.filter((x) => !ids.includes(x.id)) }));
     try {
       await Promise.all(ids.map((id) => api.deleteBlock(id)));
+      if (removed.length > 0) {
+        offerUndo("Блоки мастера убраны", async () => {
+          const restored = await Promise.all(
+            removed.map((block) =>
+              api.createBlock({
+                title: block.title,
+                color: block.color,
+                date: block.date,
+                start: block.start,
+                duration: block.duration,
+                kind: block.kind,
+                templateId: block.templateId,
+              })
+            )
+          );
+          setBundle((b) => ({ ...b, blocks: [...b.blocks, ...restored] }));
+        });
+      }
     } catch (e) {
       setError((e as Error).message);
       refresh();
@@ -1121,6 +1379,7 @@ export default function Planner({
 
   const wizardApplyDayOff = async (selected: string | null) => {
     const current = bundle.dayOff.find((d) => bundle.days.includes(d)) ?? null;
+    const before = [...bundle.dayOff];
     try {
       if (current && current !== selected) await api.dayOff(current, false);
       if (selected) await api.dayOff(selected, true);
@@ -1131,6 +1390,19 @@ export default function Planner({
           ...(selected ? [selected] : []),
         ],
       }));
+      offerUndo("Выходной в мастере изменён", async () => {
+        for (const date of bundle.days) await api.dayOff(date, false);
+        for (const date of before.filter((date) => bundle.days.includes(date))) {
+          await api.dayOff(date, true);
+        }
+        setBundle((b) => ({
+          ...b,
+          dayOff: [
+            ...b.dayOff.filter((date) => !b.days.includes(date)),
+            ...before.filter((date) => bundle.days.includes(date)),
+          ],
+        }));
+      });
     } catch (e) {
       setError((e as Error).message);
       refresh();
@@ -1318,6 +1590,22 @@ export default function Planner({
       )}
 
       {infoToast && <div className="info-toast">{infoToast}</div>}
+      {undoStack.length > 0 && (
+        <div className="undo-toast">
+          <span>{undoStack.at(-1)?.message}</span>
+          <button type="button" onClick={runUndo}>
+            Отменить
+          </button>
+          <button
+            type="button"
+            className="undo-toast-close"
+            aria-label="Скрыть"
+            onClick={() => setUndoStack([])}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* MAIN */}
       <div
@@ -1912,6 +2200,7 @@ export default function Planner({
         <TemplateEditor
           templates={bundle.templates}
           onChange={(list) => setBundle((b) => ({ ...b, templates: list }))}
+          onUndo={offerUndo}
           onClose={() => setTemplatesOpen(false)}
         />
       )}

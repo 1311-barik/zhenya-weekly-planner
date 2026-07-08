@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { COLORS, COLOR_KEYS, type ColorKey } from "@/lib/config";
 import { api } from "@/lib/client";
 import type { TemplateDTO } from "@/lib/types";
@@ -26,13 +26,16 @@ export default function TemplateEditor({
   templates,
   onChange,
   onClose,
+  onUndo,
 }: {
   templates: TemplateDTO[];
   onChange: (list: TemplateDTO[]) => void;
   onClose: () => void;
+  onUndo?: (message: string, action: () => Promise<void>) => void;
 }) {
   const [list, setList] = useState<TemplateDTO[]>(templates);
   const [busy, setBusy] = useState(false);
+  const nameBeforeRef = useRef<Record<string, string>>({});
 
   const sync = (next: TemplateDTO[]) => {
     setList(next);
@@ -50,6 +53,32 @@ export default function TemplateEditor({
     }
   };
 
+  const restoreTemplate = (updated: TemplateDTO) => {
+    sync(list.map((t) => (t.id === updated.id ? updated : t)));
+  };
+
+  const updateTemplate = async (
+    template: TemplateDTO,
+    patch: Partial<TemplateDTO>,
+    message: string
+  ) => {
+    patchLocal(template.id, patch);
+    try {
+      await api.updateTemplate(template.id, patch);
+      onUndo?.(message, async () => {
+        const restored = await api.updateTemplate(template.id, {
+          name: template.name,
+          color: template.color,
+          duration: template.duration,
+          kind: template.kind,
+        });
+        restoreTemplate(restored);
+      });
+    } catch {
+      /* тихо: локальное состояние уже обновлено */
+    }
+  };
+
   const addTemplate = async () => {
     if (busy) return;
     setBusy(true);
@@ -60,6 +89,10 @@ export default function TemplateEditor({
         duration: 60,
       });
       sync([...list, created]);
+      onUndo?.("Шаблон добавлен", async () => {
+        await api.deleteTemplate(created.id);
+        sync(list.filter((t) => t.id !== created.id));
+      });
     } catch {
       /* ignore */
     } finally {
@@ -68,8 +101,25 @@ export default function TemplateEditor({
   };
 
   const removeTemplate = async (id: string) => {
-    sync(list.filter((t) => t.id !== id));
-    api.deleteTemplate(id).catch(() => {});
+    const removed = list.find((t) => t.id === id);
+    const next = list.filter((t) => t.id !== id);
+    sync(next);
+    try {
+      await api.deleteTemplate(id);
+      if (removed) {
+        onUndo?.("Шаблон удалён", async () => {
+          const restored = await api.createTemplate({
+            name: removed.name,
+            color: removed.color,
+            duration: removed.duration,
+            kind: removed.kind,
+          });
+          sync([...next, restored]);
+        });
+      }
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -94,7 +144,21 @@ export default function TemplateEditor({
                   style={{ margin: 0, flex: 1 }}
                   value={t.name}
                   onChange={(e) => patchLocal(t.id, { name: e.target.value })}
-                  onBlur={(e) => save(t.id, { name: e.target.value })}
+                  onFocus={() => {
+                    nameBeforeRef.current[t.id] = t.name;
+                  }}
+                  onBlur={async (e) => {
+                    const beforeName = nameBeforeRef.current[t.id] ?? t.name;
+                    delete nameBeforeRef.current[t.id];
+                    const nextName = e.target.value.trim();
+                    if (!nextName || nextName === beforeName) return;
+                    const before = { ...t, name: beforeName };
+                    await save(t.id, { name: nextName });
+                    onUndo?.("Шаблон переименован", async () => {
+                      const restored = await api.updateTemplate(t.id, { name: before.name });
+                      restoreTemplate(restored);
+                    });
+                  }}
                 />
                 <button
                   className="tmpl-del"
@@ -111,10 +175,7 @@ export default function TemplateEditor({
                     key={c}
                     className={`tmpl-swatch${t.color === c ? " selected" : ""}`}
                     style={{ background: COLORS[c].dot }}
-                    onClick={() => {
-                      patchLocal(t.id, { color: c });
-                      save(t.id, { color: c });
-                    }}
+                    onClick={() => updateTemplate(t, { color: c }, "Цвет шаблона изменён")}
                   />
                 ))}
               </div>
@@ -126,8 +187,7 @@ export default function TemplateEditor({
                   value={t.duration}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    patchLocal(t.id, { duration: v });
-                    save(t.id, { duration: v });
+                    updateTemplate(t, { duration: v }, "Длительность шаблона изменена");
                   }}
                 >
                   {DURATIONS.map((d) => (
@@ -142,8 +202,7 @@ export default function TemplateEditor({
                   value={t.kind ?? ""}
                   onChange={(e) => {
                     const v = e.target.value || null;
-                    patchLocal(t.id, { kind: v as TemplateDTO["kind"] });
-                    save(t.id, { kind: v });
+                    updateTemplate(t, { kind: v as TemplateDTO["kind"] }, "Тип шаблона изменён");
                   }}
                 >
                   {KINDS.map((k) => (

@@ -140,6 +140,11 @@ export const api = {
     req<BlockDTO>("/api/blocks", { method: "POST", body: JSON.stringify(data) }),
   updateBlock: (id: string, data: Partial<BlockDTO>) =>
     req<BlockDTO>(`/api/blocks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  swapBlocks: (aId: string, bId: string) =>
+    req<{ blocks: BlockDTO[] }>("/api/blocks/swap", {
+      method: "POST",
+      body: JSON.stringify({ aId, bId }),
+    }),
   deleteBlock: (id: string) =>
     req<{ ok: boolean }>(`/api/blocks/${id}`, { method: "DELETE" }),
   createTask: (data: { title: string; duration?: number | null }) =>
