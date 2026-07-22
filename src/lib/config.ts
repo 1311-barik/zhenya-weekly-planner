@@ -59,6 +59,9 @@ export const NORMS: Record<
 
 export const NORM_TYPES = Object.keys(NORMS) as NormType[];
 
+// Крайний срок окончания «Ателье»/«Спорт» — позже начинать нельзя, не успеть до ночи.
+export const NORM_LATEST_END_MIN = 19 * 60; // 19:00
+
 // Постоянные (переходящие из недели в неделю) события.
 // day: 0 = Пн … 6 = Вс; start в минутах от полуночи.
 export interface RecurringEvent {

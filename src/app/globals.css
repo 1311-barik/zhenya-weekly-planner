@@ -1473,6 +1473,14 @@ body::before {
     padding: 8px 12px 80px;
     background: var(--cream);
   }
+  /* Ручка переноса блока в сетке — на телефоне 22px слишком мелко,
+     палец промахивается в тело блока и браузер перехватывает жест как скролл. */
+  .block-move-handle {
+    top: 2px;
+    right: 2px;
+    width: 34px;
+    height: 34px;
+  }
   /* переключатель Неделя / День */
   .mobile-view-toggle {
     display: flex;

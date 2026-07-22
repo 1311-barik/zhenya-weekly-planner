@@ -9,6 +9,7 @@ import {
   DAY_END_MIN,
   MIN_BLOCK_MINUTES,
   SLOT_MINUTES,
+  NORM_LATEST_END_MIN,
 } from "@/lib/config";
 import { findOverlap, findSameNorm, isNormKind } from "@/lib/blockRules";
 
@@ -70,6 +71,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
   if (findSameNorm(sameDayBlocks, nextKind, id)) {
     return badRequest("Женя, в этот день такой любимый блок уже стоит");
+  }
+  if (isNormKind(nextKind) && nextStart + nextDuration > NORM_LATEST_END_MIN) {
+    return badRequest("Женя, ателье и спорт нужно закончить до 19:00");
   }
 
   const block = await prisma.block.update({ where: { id }, data });

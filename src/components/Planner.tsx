@@ -11,6 +11,7 @@ import {
   WEEKDAYS_SHORT,
   NORMS,
   NORM_TYPES,
+  NORM_LATEST_END_MIN,
   type ColorKey,
   type NormType,
 } from "@/lib/config";
@@ -189,6 +190,7 @@ export default function Planner({
   const [undoStack, setUndoStack] = useState<UndoNotice[]>([]);
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const calendarAreaRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const previewRef = useRef<LivePreview | null>(null);
   const agendaDropRef = useRef<string | null>(null);
@@ -314,6 +316,9 @@ export default function Planner({
       }
       if (findSameNorm(dayBlocks, kind, excludeId)) {
         return "Женя, в этот день такой любимый блок уже стоит";
+      }
+      if (isNormKind(kind) && start + duration > NORM_LATEST_END_MIN) {
+        return `Женя, ${NORMS[kind].label.toLowerCase()} нужно закончить до 19:00`;
       }
       return null;
     },
@@ -583,6 +588,21 @@ export default function Planner({
       const o = dragOriginRef.current;
       if (Math.hypot(e.clientX - o.x, e.clientY - o.y) < DRAG_THRESHOLD) return;
       movedRef.current = true;
+    }
+    // Автоскролл сетки, когда тянешь блок к верхнему/нижнему краю экрана —
+    // иначе на телефоне не видно, куда перетаскиваешь ниже/выше видимой части дня.
+    const area = calendarAreaRef.current;
+    if (area) {
+      const rect = area.getBoundingClientRect();
+      const edge = 56;
+      const maxStep = 18;
+      if (e.clientY < rect.top + edge) {
+        const intensity = Math.min((rect.top + edge - e.clientY) / edge, 1);
+        area.scrollTop -= Math.ceil(maxStep * intensity);
+      } else if (e.clientY > rect.bottom - edge) {
+        const intensity = Math.min((e.clientY - (rect.bottom - edge)) / edge, 1);
+        area.scrollTop += Math.ceil(maxStep * intensity);
+      }
     }
     const dragKind =
       drag.mode === "resize" ? null : drag.kind;
@@ -1281,10 +1301,10 @@ export default function Planner({
     const placedTasks: TaskDTO[] = [];
     const placedTaskIds: string[] = [];
     const unparsed: string[] = [];
-    const duration = 60;
 
     for (const task of bundle.tasks) {
       const p = parseOneoff(task.title);
+      const duration = p.duration ?? 60;
       if (p.dayIndex === null) {
         unparsed.push(task.title);
         continue;
@@ -1939,6 +1959,7 @@ export default function Planner({
         {/* CALENDAR */}
         <div
           className="calendar-area"
+          ref={calendarAreaRef}
           onTouchStart={onAreaTouchStart}
           onTouchEnd={onAreaTouchEnd}
         >

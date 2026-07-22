@@ -26,6 +26,10 @@ const DURATIONS: { label: string; value: number }[] = [
   { label: "4 ч", value: 240 },
   { label: "5 ч", value: 300 },
   { label: "6 ч", value: 360 },
+  { label: "7 ч", value: 420 },
+  { label: "8 ч", value: 480 },
+  { label: "9 ч", value: 540 },
+  { label: "10 ч", value: 600 },
 ];
 
 export default function EditBlockPopup({

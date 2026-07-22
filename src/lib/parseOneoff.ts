@@ -1,10 +1,12 @@
-// Разбор строки разового дела: вытаскиваем день недели и время из текста,
-// который пишут естественно: «Встреча. Вторник. 10:00.» / «Самолёт в понедельник».
+// Разбор строки разового дела: вытаскиваем день недели, время и (если указана)
+// длительность из текста, который пишут естественно: «Встреча. Вторник. 10:00.»,
+// «Самолёт в понедельник», «Парикмахер, вторник, 17:00, 2 часа».
 
 export interface ParsedOneoff {
   dayIndex: number | null; // 0 = Пн … 6 = Вс
   start: number | null; // минуты от полуночи, если время указано
-  title: string; // очищенное название (без дня/времени)
+  duration: number | null; // минуты, если длительность указана явно
+  title: string; // очищенное название (без дня/времени/длительности)
 }
 
 // Полные формы дней (включая падежи), в порядке 0=Пн … 6=Вс.
@@ -19,8 +21,36 @@ const DAY_WORDS: RegExp[] = [
 ];
 const DAY_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
 
+const MIN_PARSED_DURATION = 5;
+const MAX_PARSED_DURATION = 600; // 10 ч — верхняя граница длительности блока
+
 export function parseOneoff(text: string): ParsedOneoff {
-  const lower = text.toLowerCase();
+  // 0) длительность: «2 часа», «1.5 ч», «90 мин». Вырезаем из текста заранее,
+  // чтобы не спутать с временем (там всегда есть отдельный час дня, «17:00»).
+  let duration: number | null = null;
+  let working = text;
+
+  const durMinutes = working.match(/(\d{1,3})\s*мин(?:ут[ыу]?)?\.?(?=[^\p{L}]|$)/iu);
+  if (durMinutes) {
+    duration = Number(durMinutes[1]);
+    const i = durMinutes.index ?? 0;
+    working = working.slice(0, i) + " " + working.slice(i + durMinutes[0].length);
+  } else {
+    const durHours = working.match(
+      /(\d{1,2}[.,]\d)\s*ч\.?(?=[^\p{L}\d]|$)|(\d{1,2})\s*час(?:а|ов)?\.?(?=[^\p{L}]|$)/iu
+    );
+    if (durHours) {
+      const raw = (durHours[1] ?? durHours[2]).replace(",", ".");
+      duration = Math.round(Number(raw) * 60);
+      const i = durHours.index ?? 0;
+      working = working.slice(0, i) + " " + working.slice(i + durHours[0].length);
+    }
+  }
+  if (duration !== null && (duration < MIN_PARSED_DURATION || duration > MAX_PARSED_DURATION)) {
+    duration = null;
+  }
+
+  const lower = working.toLowerCase();
 
   // 1) день недели
   let dayIndex: number | null = null;
@@ -42,13 +72,13 @@ export function parseOneoff(text: string): ParsedOneoff {
 
   // 2) время: 10:00 / 10.00 / 15 ч
   let start: number | null = null;
-  const colon = text.match(/(^|[^\d])(\d{1,2})[:.](\d{2})(?=[^\d]|$)/);
+  const colon = working.match(/(^|[^\d])(\d{1,2})[:.](\d{2})(?=[^\d]|$)/);
   if (colon) {
     const h = Number(colon[2]);
     const m = Number(colon[3]);
     if (h < 24 && m < 60) start = h * 60 + m;
   } else {
-    const hourOnly = text.match(/(^|[^\d])(\d{1,2})\s*ч\.?(?=[^\p{L}\d]|$)/iu);
+    const hourOnly = working.match(/(^|[^\d])(\d{1,2})\s*ч\.?(?=[^\p{L}\d]|$)/iu);
     if (hourOnly) {
       const h = Number(hourOnly[2]);
       if (h < 24) start = h * 60;
@@ -56,7 +86,7 @@ export function parseOneoff(text: string): ParsedOneoff {
   }
 
   // 3) очистка названия
-  let title = text;
+  let title = working;
   title = title.replace(/(^|[^\d])\d{1,2}[:.]\d{2}(?=[^\d]|$)/g, "$1 ");
   title = title.replace(/(^|[^\d])\d{1,2}\s*ч\.?(?=[^\p{L}\d]|$)/giu, "$1 ");
   for (const re of DAY_WORDS) title = title.replace(new RegExp(re.source, "gi"), " ");
@@ -67,5 +97,5 @@ export function parseOneoff(text: string): ParsedOneoff {
   title = title.replace(/[.,;:!?]+/g, " ").replace(/\s+/g, " ").trim();
   if (!title) title = text.trim();
 
-  return { dayIndex, start, title };
+  return { dayIndex, start, duration, title };
 }
