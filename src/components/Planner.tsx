@@ -143,6 +143,9 @@ interface AgendaGap {
   start: number;
   end: number;
   fits: NormType[];
+  // Окошко шире, чем допустимо для нормы — норма влезает, только если начать
+  // пораньше, а не в любой точке окошка (влияет только на подсказку в UI).
+  normsCapped: boolean;
   variant: "empty-day" | "between";
 }
 
@@ -191,6 +194,7 @@ export default function Planner({
 
   const colRefs = useRef<(HTMLDivElement | null)[]>([]);
   const calendarAreaRef = useRef<HTMLDivElement | null>(null);
+  const weekAgendaRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const previewRef = useRef<LivePreview | null>(null);
   const agendaDropRef = useRef<string | null>(null);
@@ -358,9 +362,11 @@ export default function Planner({
       const duration = safeEnd - safeStart;
       if (duration < minUsefulGap) return null;
       const dayBlocks = blocksByDay[dayKey] ?? [];
+      // Ателье/Спорт должны реально помещаться, закончившись до 19:00 —
+      // иначе окошко «мягко встанет Спорт» врёт, а вставка потом падает с ошибкой.
       const fits = NORM_TYPES.filter(
         (type) =>
-          duration >= NORMS[type].minDuration &&
+          Math.min(safeEnd, NORM_LATEST_END_MIN) - safeStart >= NORMS[type].minDuration &&
           !findSameNorm(dayBlocks, type)
       );
       if (fits.length === 0) return null;
@@ -369,6 +375,7 @@ export default function Planner({
         start: safeStart,
         end: safeEnd,
         fits,
+        normsCapped: safeEnd > NORM_LATEST_END_MIN,
         variant,
       };
     };
@@ -589,11 +596,14 @@ export default function Planner({
       if (Math.hypot(e.clientX - o.x, e.clientY - o.y) < DRAG_THRESHOLD) return;
       movedRef.current = true;
     }
-    // Автоскролл сетки, когда тянешь блок к верхнему/нижнему краю экрана —
+    // Автоскролл сетки/ленты, когда тянешь блок к верхнему/нижнему краю экрана —
     // иначе на телефоне не видно, куда перетаскиваешь ниже/выше видимой части дня.
-    const area = calendarAreaRef.current;
-    if (area) {
+    // Оба контейнера всегда в DOM, скрытый (display:none) даёт нулевой rect
+    // и просто не сработает — проверяем оба, а не только активный вид.
+    for (const area of [calendarAreaRef.current, weekAgendaRef.current]) {
+      if (!area) continue;
       const rect = area.getBoundingClientRect();
+      if (rect.height === 0) continue;
       const edge = 56;
       const maxStep = 18;
       if (e.clientY < rect.top + edge) {
@@ -948,7 +958,7 @@ export default function Planner({
 
   // ── добавление блока тапом (мобильная лента) ──
   // Первый свободный слот в дне, начиная с 9:00.
-  const firstFreeStart = (dayKey: string, duration: number) => {
+  const firstFreeStart = (dayKey: string, duration: number, kind?: NormType | null) => {
     const dayBlocks = (blocksByDay[dayKey] ?? [])
       .slice()
       .sort((a, b) => a.start - b.start);
@@ -957,7 +967,10 @@ export default function Planner({
       if (start + duration <= b.start) break;
       if (b.start + b.duration > start) start = b.start + b.duration;
     }
-    return start + duration <= DAY_END_MIN ? start : null;
+    // Ателье/Спорт не искать позже 19:00 — иначе находим слот, который
+    // placementMessage всё равно отклонит, только с менее понятной ошибкой.
+    const limit = isNormKind(kind) ? Math.min(DAY_END_MIN, NORM_LATEST_END_MIN) : DAY_END_MIN;
+    return start + duration <= limit ? start : null;
   };
 
   const addStandardBlock = async (dayKey: string, t: TemplateDTO) => {
@@ -966,7 +979,7 @@ export default function Planner({
       setError("Женя, это выходной, давай оставим его свободным");
       return;
     }
-    const start = firstFreeStart(dayKey, t.duration);
+    const start = firstFreeStart(dayKey, t.duration, t.kind);
     if (start === null) {
       setError("Женя, в этом дне уже нет подходящего свободного окошка");
       return;
@@ -1775,7 +1788,7 @@ export default function Planner({
         </div>
 
         {/* НЕДЕЛЬНАЯ ЛЕНТА (мобильная главная) */}
-        <div className="week-agenda">
+        <div className="week-agenda" ref={weekAgendaRef}>
           {bundle.days.map((dayKey, i) => {
             const off = dayOffSet.has(dayKey);
             const d = fromDateKey(dayKey);
@@ -1797,13 +1810,12 @@ export default function Planner({
                 <div className="agenda-day-head">
                   <span className="agenda-day-name">{WEEKDAYS_SHORT[i]}</span>
                   <span className="agenda-day-num">{d.getUTCDate()}</span>
-                  {off && <span className="agenda-dayoff-badge">выходной</span>}
                   <button
                     className={`agenda-dayoff-btn${off ? " active" : ""}`}
                     onClick={() => toggleDayOff(dayKey)}
                     title={off ? "Отменить выходной" : "Сделать выходным"}
                   >
-                    {off ? "↺" : "☼"}
+                    {off ? "↺ Рабочий" : "☼ Выходной"}
                   </button>
                 </div>
 
@@ -1836,6 +1848,7 @@ export default function Planner({
                           {gap.fits
                             .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
                             .join(" или ")}
+                          {gap.normsCapped && " (если начать пораньше, чтобы успеть до 19:00)"}
                         </span>
                       </span>
                     </button>
@@ -1908,6 +1921,7 @@ export default function Planner({
                                 {gap.fits
                                   .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
                                   .join(" или ")}
+                                {gap.normsCapped && " (если начать пораньше, чтобы успеть до 19:00)"}
                               </span>
                             </span>
                           </button>
@@ -1940,6 +1954,7 @@ export default function Planner({
                             {gap.fits
                               .map((type) => `${NORMS[type].emoji} ${NORMS[type].label}`)
                               .join(" или ")}
+                            {gap.normsCapped && " (если начать пораньше, чтобы успеть до 19:00)"}
                           </span>
                         </span>
                       </button>

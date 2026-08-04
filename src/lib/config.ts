@@ -59,8 +59,31 @@ export const NORMS: Record<
 
 export const NORM_TYPES = Object.keys(NORMS) as NormType[];
 
+// ── Параметры, которые чаще всего просит поменять Женя ──
+// Уже меняли: макс. длительность (6ч → 10ч), появился 19:00. При следующей
+// правке лимита в её сообщении — смотри сюда в первую очередь.
+
 // Крайний срок окончания «Ателье»/«Спорт» — позже начинать нельзя, не успеть до ночи.
 export const NORM_LATEST_END_MIN = 19 * 60; // 19:00
+
+// Варианты длительности в попапе редактирования блока.
+export const BLOCK_DURATION_OPTIONS: { label: string; value: number }[] = [
+  { label: "15 мин", value: 15 },
+  { label: "30 мин", value: 30 },
+  { label: "45 мин", value: 45 },
+  { label: "1 ч", value: 60 },
+  { label: "1.5 ч", value: 90 },
+  { label: "2 ч", value: 120 },
+  { label: "2.5 ч", value: 150 },
+  { label: "3 ч", value: 180 },
+  { label: "4 ч", value: 240 },
+  { label: "5 ч", value: 300 },
+  { label: "6 ч", value: 360 },
+  { label: "7 ч", value: 420 },
+  { label: "8 ч", value: 480 },
+  { label: "9 ч", value: 540 },
+  { label: "10 ч", value: 600 },
+];
 
 // Постоянные (переходящие из недели в неделю) события.
 // day: 0 = Пн … 6 = Вс; start в минутах от полуночи.

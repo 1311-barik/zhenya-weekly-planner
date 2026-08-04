@@ -27,6 +27,7 @@
 html,
 body {
   height: 100%;
+  overscroll-behavior: none;
 }
 
 body {
@@ -316,6 +317,7 @@ body::before {
 /* ───────── Calendar ───────── */
 .calendar-area {
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--cream);
   position: relative;
 }
@@ -1030,6 +1032,21 @@ body::before {
   .mv-day .time-grid {
     grid-template-columns: 44px 1fr;
   }
+  /* В «Дне» кнопка выходного наследует opacity:0-до-hover с десктопа —
+     на тач-экране hover не срабатывает, кнопка становится невидимой. */
+  .mv-day .dayoff-btn {
+    opacity: 1;
+    top: 4px;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+  }
+  /* В «Дне» resize-handle не скрыт (в отличие от .mv-week), но 8px —
+     слишком мелкая цель для пальца; расширяем полосу растягивания. */
+  .mv-day .resize-handle {
+    height: 20px;
+  }
   .mobile-day-switch {
     display: flex;
     align-items: center;
@@ -1469,6 +1486,7 @@ body::before {
   .week-agenda {
     display: block;
     overflow-y: auto;
+    overscroll-behavior: contain;
     height: calc(100vh - 64px - 44px);
     padding: 8px 12px 80px;
     background: var(--cream);
@@ -1480,6 +1498,14 @@ body::before {
     right: 2px;
     width: 34px;
     height: 34px;
+  }
+  /* Та же болезнь в «Списке»: 30px всё ещё мимо пальца достаточно часто,
+     промах уводит жест в тело блока (touch-action: pan-y) — отсюда «экран
+     стягивается» при попытке перетащить вниз. Увеличиваем до полноценных 44px. */
+  .agenda-move-handle {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
   }
   /* переключатель Неделя / День */
   .mobile-view-toggle {
@@ -1607,26 +1633,21 @@ body::before {
 .agenda-day.is-today .agenda-day-num {
   color: var(--terracotta);
 }
-.agenda-dayoff-badge {
-  font-size: 10px;
-  color: var(--sky-blue);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: rgba(110, 158, 191, 0.12);
-  padding: 2px 8px;
-  border-radius: 10px;
-}
 .agenda-dayoff-btn {
   margin-left: auto;
-  border: none;
-  background: transparent;
-  color: var(--light-gray);
-  font-size: 15px;
+  border: 1px solid rgba(196, 189, 180, 0.6);
+  background: var(--warm-white);
+  color: var(--mid-gray);
+  font-size: 12px;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 .agenda-dayoff-btn.active {
+  background: var(--sky-blue-pale);
   color: var(--sky-blue);
+  border-color: var(--sky-blue-light);
 }
 .agenda-blocks {
   padding: 0 10px;

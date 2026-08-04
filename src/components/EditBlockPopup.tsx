@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { COLORS, COLOR_KEYS, WEEKDAYS_SHORT, type ColorKey } from "@/lib/config";
+import {
+  COLORS,
+  COLOR_KEYS,
+  WEEKDAYS_SHORT,
+  BLOCK_DURATION_OPTIONS,
+  type ColorKey,
+} from "@/lib/config";
 import { formatTime, parseTime } from "@/lib/client";
 import { fromDateKey } from "@/lib/week";
 
@@ -13,24 +19,6 @@ export interface BlockDraft {
   start: number;
   duration: number;
 }
-
-const DURATIONS: { label: string; value: number }[] = [
-  { label: "15 мин", value: 15 },
-  { label: "30 мин", value: 30 },
-  { label: "45 мин", value: 45 },
-  { label: "1 ч", value: 60 },
-  { label: "1.5 ч", value: 90 },
-  { label: "2 ч", value: 120 },
-  { label: "2.5 ч", value: 150 },
-  { label: "3 ч", value: 180 },
-  { label: "4 ч", value: 240 },
-  { label: "5 ч", value: 300 },
-  { label: "6 ч", value: 360 },
-  { label: "7 ч", value: 420 },
-  { label: "8 ч", value: 480 },
-  { label: "9 ч", value: 540 },
-  { label: "10 ч", value: 600 },
-];
 
 export default function EditBlockPopup({
   mode,
@@ -116,7 +104,7 @@ export default function EditBlockPopup({
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
             >
-              {DURATIONS.map((d) => (
+              {BLOCK_DURATION_OPTIONS.map((d) => (
                 <option key={d.value} value={d.value}>
                   {d.label}
                 </option>
