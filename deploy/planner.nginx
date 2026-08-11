@@ -16,7 +16,6 @@ server {
 }
 
 server {
-    listen 80;
     server_name planner-135-181-197-13.nip.io;
 
     location / {
@@ -30,4 +29,20 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/planner-135-181-197-13.nip.io/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/planner-135-181-197-13.nip.io/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+server {
+    if ($host = planner-135-181-197-13.nip.io) {
+        return 301 https://$host$request_uri;
+    }
+
+    listen 80;
+    server_name planner-135-181-197-13.nip.io;
+    return 404;
 }
