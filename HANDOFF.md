@@ -1,6 +1,6 @@
 # Context Handoff
 - cwd: /Users/shura/Claude/planner
-- branch: main (HEAD 11b7340, 40 коммитов до текущих незакоммиченных правок)
+- branch: main
 - saved: 2026-08-11
 - method: manual
 
