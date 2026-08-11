@@ -58,6 +58,9 @@ Telegram/iOS WebView во время переноса, распознавани�
   Во время drag нативный `touchmove` блокируется, а автоскролл контейнера остаётся.
 - **PWA:** manifest — `src/app/manifest.ts`, иконки — `public/icons/`, сохранённый
   Nginx-конфиг — `deploy/planner.nginx`.
+- **HTTPS:** Let's Encrypt для `planner-135-181-197-13.nip.io`, сертификат в
+  `/etc/letsencrypt/live/planner-135-181-197-13.nip.io/`, продление через
+  активный `certbot.timer`; старый IP остаётся отдельным HTTP server block.
 - **Секреты:** токены/ключи в конфиг вписывает пользователь сам (не я).
 - **«Параллельного агента» НЕТ** — En-коммиты (Soften language, mobile drag) это авто-правки
   среды/линтера (пользователь подтвердил).
