@@ -9,6 +9,7 @@ export const MIN_BLOCK_MINUTES = 15;
 
 export const DAY_START_MIN = DAY_START_HOUR * 60;
 export const DAY_END_MIN = DAY_END_HOUR * 60;
+export const ALL_DAY_DURATION_MIN = 10 * 60;
 
 // Дни недели: 0 = Пн … 6 = Вс
 export const WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -82,7 +83,7 @@ export const BLOCK_DURATION_OPTIONS: { label: string; value: number }[] = [
   { label: "7 ч", value: 420 },
   { label: "8 ч", value: 480 },
   { label: "9 ч", value: 540 },
-  { label: "10 ч", value: 600 },
+  { label: "Весь день (10 ч)", value: ALL_DAY_DURATION_MIN },
 ];
 
 // Постоянные (переходящие из недели в неделю) события.

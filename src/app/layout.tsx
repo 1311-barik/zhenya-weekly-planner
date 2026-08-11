@@ -16,14 +16,34 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "sheyn's planner, недельный планировщик",
+  title: "Планнер Жени",
   description: "Персональный недельный планировщик",
+  applicationName: "Планнер Жени",
+  manifest: "/manifest.webmanifest",
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/icons/planner-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/planner-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Планнер",
+  },
 };
 
 export const viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  themeColor: "#c4704a",
 };
 
 export default function RootLayout({

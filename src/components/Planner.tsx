@@ -207,6 +207,10 @@ export default function Planner({
   const swipeRef = useRef<{ x: number; y: number } | null>(null);
   const lastSnapKeyRef = useRef("");
 
+  const preventNativeDragScroll = useCallback((event: TouchEvent) => {
+    if (dragRef.current && event.cancelable) event.preventDefault();
+  }, []);
+
   // ── загрузка недели при смене ──
   useEffect(() => {
     if (weekStart === bundle.weekStart) return;
@@ -581,6 +585,7 @@ export default function Planner({
   const onPointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (e.pointerType === "touch" && e.cancelable) e.preventDefault();
     if (drag.mode !== "resize") {
       setDragOverlay({
         x: e.clientX,
@@ -669,16 +674,19 @@ export default function Planner({
 
   const removeDragListeners = useCallback(() => {
     window.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("touchmove", preventNativeDragScroll);
+    document.documentElement.classList.remove("planner-is-dragging");
     if (pointerUpRef.current) {
       window.removeEventListener("pointerup", pointerUpRef.current);
       window.removeEventListener("touchend", pointerUpRef.current);
     }
     if (pointerCancelRef.current) {
       window.removeEventListener("pointercancel", pointerCancelRef.current);
+      window.removeEventListener("touchcancel", pointerCancelRef.current);
       window.removeEventListener("blur", pointerCancelRef.current);
       document.removeEventListener("visibilitychange", pointerCancelRef.current);
     }
-  }, [onPointerMove]);
+  }, [onPointerMove, preventNativeDragScroll]);
 
   const onPointerUp = useCallback(async () => {
     removeDragListeners();
@@ -877,9 +885,12 @@ export default function Planner({
     movedRef.current = false;
     dragOriginRef.current = { x: e.clientX, y: e.clientY };
     window.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("touchmove", preventNativeDragScroll, { passive: false });
+    document.documentElement.classList.add("planner-is-dragging");
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("touchend", onPointerUp);
     window.addEventListener("pointercancel", onPointerCancel);
+    window.addEventListener("touchcancel", onPointerCancel);
     window.addEventListener("blur", onPointerCancel);
     document.addEventListener("visibilitychange", onPointerCancel);
   };

@@ -2,6 +2,8 @@
 // длительность из текста, который пишут естественно: «Встреча. Вторник. 10:00.»,
 // «Самолёт в понедельник», «Парикмахер, вторник, 17:00, 2 часа».
 
+import { ALL_DAY_DURATION_MIN } from "./config";
+
 export interface ParsedOneoff {
   dayIndex: number | null; // 0 = Пн … 6 = Вс
   start: number | null; // минуты от полуночи, если время указано
@@ -22,12 +24,21 @@ const DAY_WORDS: RegExp[] = [
 const DAY_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
 
 const MIN_PARSED_DURATION = 5;
-const MAX_PARSED_DURATION = 600; // 10 ч — верхняя граница длительности блока
+const MAX_PARSED_DURATION = ALL_DAY_DURATION_MIN;
+const ALL_DAY_PATTERN = /(?:на\s+)?(?:весь|целый)\s+день|в\s+течение\s+всего\s+дня/iu;
 
 export function parseOneoff(text: string): ParsedOneoff {
   let duration: number | null = null;
   let start: number | null = null;
   let working = text;
+
+  // «Работа весь день» — продуктовый пресет на 10 часов. Точное время или
+  // длительность, если они указаны рядом, остаются более сильным сигналом.
+  const allDay = working.match(ALL_DAY_PATTERN);
+  if (allDay) {
+    const i = allDay.index ?? 0;
+    working = working.slice(0, i) + " " + working.slice(i + allDay[0].length);
+  }
 
   // 0а) диапазон времени: «13:00-14:00», «13:00–15:30», «с 13:00 до 15:30» —
   // даёт сразу и начало, и длительность. Проверяем раньше отдельного «2 часа»/«90 мин».
@@ -75,6 +86,7 @@ export function parseOneoff(text: string): ParsedOneoff {
       }
     }
   }
+  if (duration === null && allDay) duration = ALL_DAY_DURATION_MIN;
   if (duration !== null && (duration < MIN_PARSED_DURATION || duration > MAX_PARSED_DURATION)) {
     duration = null;
   }
